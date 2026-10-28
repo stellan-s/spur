@@ -36,6 +36,8 @@ export async function GET(request: Request, context: Context) {
         promote: requestContext.principal.permissions.has("memory.promote"),
         archive: requestContext.principal.permissions.has("memory.archive"),
         merge: requestContext.principal.permissions.has("memory.merge"),
+        propose_alias: requestContext.principal.permissions.has("memory.propose"),
+        review_alias: requestContext.principal.permissions.has("memory.promote"),
       },
     }, {
       headers: { "Cache-Control": "no-store" },
@@ -72,6 +74,8 @@ export async function PATCH(request: Request, context: Context) {
         promote: requestContext.principal.permissions.has("memory.promote"),
         archive: requestContext.principal.permissions.has("memory.archive"),
         merge: requestContext.principal.permissions.has("memory.merge"),
+        propose_alias: requestContext.principal.permissions.has("memory.propose"),
+        review_alias: requestContext.principal.permissions.has("memory.promote"),
       },
     });
   } catch (error) {

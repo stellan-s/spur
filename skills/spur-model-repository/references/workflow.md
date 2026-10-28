@@ -17,6 +17,7 @@ Show a compact preflight containing the Spur server, organization, repository, c
 - Use the workspace memory and relationships as the existing catalog. Reuse stable `mem_...` IDs when this repository adds evidence to an existing concept.
 - Inspect committed source, tests, migrations, configuration, and relevant documentation. When the worktree is dirty and the user chose HEAD-only, read exclusively from the pinned commit with commit-aware commands such as `git ls-tree`, `git grep <commit>`, and `git show <commit>:<path>`; do not use ordinary filesystem reads. Exclude dependencies, generated output, build artifacts, fixtures, snapshots, data dumps, credentials, and secret-like files.
 - Follow the `layer_order` returned by `get_modeling_schema`. Do not hardcode a different order.
+- Trace product behavior across interface, route, service, integration, and storage boundaries so that cross-cutting capabilities are modeled even when no one file names them.
 - Cover every returned modeled kind that the repository supports. Record absence as a gap in the final report, not as a fabricated object.
 
 ## 3. Open one commit-pinned run
@@ -42,6 +43,7 @@ Inspect the returned run before proposing anything:
 - Work in bounded batches. Use stable external IDs that describe the business concept, not a file path.
 - Before proposing a new object, compare it with existing tenant memory and earlier objects in the run. Use `add_evidence` for the same concept instead of creating a duplicate.
 - Call `propose_memory_objects` with exact, minimal evidence that follows the evidence policy.
+- Include an alternate business or product term in an object's `aliases` only when a separate minimal excerpt explicitly supports that term. Never turn a code identifier or an inferred synonym into an alias.
 - Propose an entity when committed evidence establishes the business concept. Include only evidenced attributes and data locations; empty lists are valid. Do not guess classifications, system-of-record roles, or identifiers.
 - Call `propose_relationships` only after both endpoints exist. Use only runtime predicates in their stated direction. Entity relationships need the runtime-required cardinality and joining attributes when supported.
 - Model non-sensitive technical safeguards as candidate controls. When safeguard details meet the runtime definition of `restricted`, propose them only if `permissions` contains `restricted.write`. Otherwise omit them, report the permission-limited gap, and do not claim that duplicates were ruled out among hidden restricted knowledge. Do not copy ISMS register wording or claim effectiveness.

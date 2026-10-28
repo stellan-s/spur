@@ -70,6 +70,43 @@ export const memoryAuthoritySchema = z.enum([
   "ai_inference",
 ]);
 
+export const memoryAliasStatusSchema = z.enum([
+  "proposed",
+  "verified",
+  "rejected",
+]);
+
+export const memoryAliasOriginSchema = z.enum([
+  "repository",
+  "document",
+  "user",
+  "system",
+]);
+
+export const memoryAliasScopeSchema = z.enum([
+  "organization",
+  "repository",
+]);
+
+export const memoryAliasSchema = z.object({
+  id: z.string(),
+  memory_id: z.string(),
+  name: z.string(),
+  status: memoryAliasStatusSchema,
+  origin: memoryAliasOriginSchema,
+  scope: memoryAliasScopeSchema,
+  source_id: z.string().nullable(),
+  source_version: z.string().nullable(),
+  evidence_ids: z.array(z.string()),
+  actor: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  reviewed_at: z.string().nullable(),
+  reviewed_by: z.string().nullable(),
+  review_note: z.string().nullable(),
+  metadata: z.record(z.string(), z.unknown()),
+});
+
 export const memoryRelationshipSchema = z.object({
   id: z.string(),
   from_id: z.string(),
@@ -95,6 +132,7 @@ export const memoryObjectSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
   metadata: z.record(z.string(), z.unknown()),
+  aliases: z.array(memoryAliasSchema).optional(),
 });
 
 export const storedEvidenceSchema = z.object({
@@ -145,6 +183,11 @@ export const modeledEvidenceInputSchema = z.object({
 }).superRefine((input, context) => {
   const problem = modeledEvidenceProblem(input);
   if (problem) context.addIssue({ code: "custom", message: problem });
+});
+
+export const modeledAliasInputSchema = z.object({
+  name: z.string().trim().min(2).max(160),
+  evidence: z.array(modeledEvidenceInputSchema).min(1).max(3),
 });
 
 export const informationClassificationSchema = z.string().trim().min(1).max(80);
@@ -213,6 +256,7 @@ export const proposedMemoryObjectSchema = z.object({
   sensitivity: z.literal("restricted").optional(),
   subjects: z.array(z.string().trim().min(1).max(160)).max(30).default([]),
   evidence: z.array(modeledEvidenceInputSchema).min(1).max(12),
+  aliases: z.array(modeledAliasInputSchema).max(12).optional(),
   entity_definition: modeledEntityDefinitionSchema.optional(),
 }).superRefine((input, context) => {
   if (input.kind === "entity" && !input.entity_definition) {
@@ -229,6 +273,39 @@ export const proposedMemoryObjectSchema = z.object({
       message: "Entity definitions can only be attached to entity objects.",
     });
   }
+  const title = input.title.toLocaleLowerCase();
+  const aliases = new Set<string>();
+  (input.aliases ?? []).forEach((alias, index) => {
+    const normalized = alias.name.toLocaleLowerCase();
+    if (normalized === title) {
+      context.addIssue({
+        code: "custom",
+        path: ["aliases", index, "name"],
+        message: "An alias must differ from the canonical title.",
+      });
+    }
+    if (aliases.has(normalized)) {
+      context.addIssue({
+        code: "custom",
+        path: ["aliases", index, "name"],
+        message: "Aliases must be unique within an object.",
+      });
+    }
+    aliases.add(normalized);
+  });
+});
+
+export const proposeMemoryAliasInputSchema = z.object({
+  memory_id: z.string().regex(/^mem_[a-zA-Z0-9_-]+$/),
+  name: z.string().trim().min(2).max(160),
+});
+
+export const reviewMemoryAliasInputSchema = z.object({
+  memory_id: z.string().regex(/^mem_[a-zA-Z0-9_-]+$/),
+  alias_id: z.string().regex(/^alias_[a-zA-Z0-9_-]+$/),
+  action: z.enum(["verify", "reject"]),
+  note: z.string().trim().min(3).max(500),
+  confirmation: z.string().min(1),
 });
 
 export const proposeMemoryObjectsInputSchema = z.object({
@@ -408,6 +485,10 @@ export type SourceKind = z.infer<typeof sourceKindSchema>;
 export type MemoryObject = z.infer<typeof memoryObjectSchema>;
 export type MemoryKind = z.infer<typeof memoryKindSchema>;
 export type ModeledMemoryKind = z.infer<typeof modeledMemoryKindSchema>;
+export type MemoryAlias = z.infer<typeof memoryAliasSchema>;
+export type MemoryAliasStatus = z.infer<typeof memoryAliasStatusSchema>;
+export type MemoryAliasOrigin = z.infer<typeof memoryAliasOriginSchema>;
+export type MemoryAliasScope = z.infer<typeof memoryAliasScopeSchema>;
 export type MemoryRelationship = z.infer<typeof memoryRelationshipSchema>;
 export type StoredEvidence = z.infer<typeof storedEvidenceSchema>;
 export type SourceAnalysisRun = z.infer<typeof sourceAnalysisRunSchema>;
@@ -418,6 +499,8 @@ export type EntityAttribute = z.infer<typeof entityAttributeSchema>;
 export type DataLocation = z.infer<typeof dataLocationSchema>;
 export type RelationshipCardinality = z.infer<typeof relationshipCardinalitySchema>;
 export type ProposeMemoryObjectsInput = z.infer<typeof proposeMemoryObjectsInputSchema>;
+export type ProposeMemoryAliasInput = z.infer<typeof proposeMemoryAliasInputSchema>;
+export type ReviewMemoryAliasInput = z.infer<typeof reviewMemoryAliasInputSchema>;
 export type AddEvidenceInput = z.infer<typeof addEvidenceInputSchema>;
 export type ProposeRelationshipsInput = z.infer<typeof proposeRelationshipsInputSchema>;
 export type Workspace = z.infer<typeof workspaceSchema>;

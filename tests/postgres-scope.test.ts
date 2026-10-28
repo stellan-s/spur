@@ -7,6 +7,7 @@ const scopedTables = [
   "sources",
   "evidence",
   "memory_objects",
+  "memory_aliases",
   "relationships",
   "memory_merges",
   "knowledge_gaps",

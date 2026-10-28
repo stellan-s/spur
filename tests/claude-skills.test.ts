@@ -28,8 +28,8 @@ describe("Claude skill installation", () => {
     expect(installed).toMatchObject({
       event: "claude_skill_installed",
       installed: true,
-      installed_version: "1.0.0",
-      bundled_version: "1.0.0",
+      installed_version: "1.1.0",
+      bundled_version: "1.1.0",
       current: true,
       replaced: false,
       modified_files: [],

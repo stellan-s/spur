@@ -18,10 +18,12 @@ import {
   editMemoryInputSchema,
   entityDefinitionSchema,
   investigationResultSchema,
+  proposeMemoryAliasInputSchema,
   proposeMemoryObjectsInputSchema,
   proposeRelationshipsInputSchema,
   recordDecisionInputSchema,
   registerSourceInputSchema,
+  reviewMemoryAliasInputSchema,
   workspaceSchema,
   type AddEvidenceInput,
   type BeginSourceAnalysisInput,
@@ -30,12 +32,15 @@ import {
   type EditMemoryInput,
   type InvestigationResult,
   type MemoryKind,
+  type MemoryAlias,
   type MemoryObject,
   type MemoryRelationship,
   type ProposeMemoryObjectsInput,
+  type ProposeMemoryAliasInput,
   type ProposeRelationshipsInput,
   type RecordDecisionInput,
   type RegisterSourceInput,
+  type ReviewMemoryAliasInput,
   type Source,
   type SourceAnalysisRun,
   type StoredEvidence,
@@ -584,6 +589,13 @@ export class SpurService {
           authority: item.authority,
           confidence: item.confidence,
           subjects: item.subjects,
+          aliases: (item.aliases ?? []).map((alias) => ({
+            name: alias.name,
+            status: alias.status,
+            origin: alias.origin,
+            scope: alias.scope,
+            actor: alias.actor,
+          })),
           metadata: item.metadata,
         })),
         relationships: visibleRelationships.map((relationship) => ({
@@ -707,6 +719,7 @@ export class SpurService {
   async getMemoryDetail(id: string): Promise<{
     item: MemoryObject;
     evidence: StoredEvidence[];
+    alias_evidence: Record<string, StoredEvidence[]>;
     relationships: MemoryRelationship[];
     related: MemoryObject[];
   }> {
@@ -721,6 +734,11 @@ export class SpurService {
     const visibleIds = new Set(related.map((relatedItem) => relatedItem.id));
     const evidence = (await Promise.all(item.evidence_ids.map((evidenceId) => this.getEvidence(evidenceId))))
       .filter((entry): entry is StoredEvidence => Boolean(entry));
+    const aliasEvidenceEntries = await Promise.all((item.aliases ?? []).map(async (alias) => [
+      alias.id,
+      (await Promise.all(alias.evidence_ids.map((evidenceId) => this.getEvidence(evidenceId))))
+        .filter((entry): entry is StoredEvidence => Boolean(entry)),
+    ] as const));
     const displayedRelationships = await Promise.all(relationships
       .filter((relationship) =>
         visibleIds.has(relationship.from_id === id ? relationship.to_id : relationship.from_id),
@@ -728,6 +746,7 @@ export class SpurService {
     return {
       item,
       evidence,
+      alias_evidence: Object.fromEntries(aliasEvidenceEntries),
       relationships: displayedRelationships,
       related,
     };
@@ -764,6 +783,59 @@ export class SpurService {
     });
     if (!updated) throw new NotFoundError("Memory object was not found.");
     return this.displayMemory(updated);
+  }
+
+  async proposeMemoryAlias(
+    input: ProposeMemoryAliasInput,
+    submissionChannel: "mcp" | "portal" | "service" = "service",
+  ): Promise<MemoryAlias> {
+    const parsed = proposeMemoryAliasInputSchema.parse(input);
+    if (containsSecurityIssue(parsed.name)) throw new InputError(SECURITY_WITHHELD_MESSAGE);
+    const current = await this.store.getMemory(parsed.memory_id);
+    if (!current || current.metadata.deleted_at || this.isHidden(current)) {
+      throw new NotFoundError("Memory object was not found.");
+    }
+    if (isRestrictedMemory(current) && !this.authorization.restrictedWrite) {
+      throw new AuthorizationError("Restricted knowledge requires restricted.write.");
+    }
+    if (current.title.trim().localeCompare(parsed.name, undefined, { sensitivity: "base" }) === 0) {
+      throw new InputError("Alias must differ from the canonical title.");
+    }
+    return this.store.upsertMemoryAlias({
+      memoryId: current.id,
+      name: parsed.name,
+      status: "proposed",
+      origin: "user",
+      scope: "organization",
+      actor: this.actor,
+      metadata: {
+        epistemic_status: "user_generated_suggestion",
+        submission_channel: submissionChannel,
+      },
+    });
+  }
+
+  async reviewMemoryAlias(input: ReviewMemoryAliasInput): Promise<MemoryAlias> {
+    const parsed = reviewMemoryAliasInputSchema.parse(input);
+    if (parsed.confirmation !== parsed.alias_id) {
+      throw new InputError("Confirmation must match the alias ID.");
+    }
+    const current = await this.store.getMemory(parsed.memory_id);
+    if (!current || current.metadata.deleted_at || this.isHidden(current)) {
+      throw new NotFoundError("Memory object was not found.");
+    }
+    if (isRestrictedMemory(current) && !this.authorization.restrictedWrite) {
+      throw new AuthorizationError("Restricted knowledge requires restricted.write.");
+    }
+    const alias = await this.store.getMemoryAlias(parsed.alias_id);
+    if (!alias || alias.memory_id !== current.id) throw new NotFoundError("Alias was not found.");
+    return this.store.reviewMemoryAlias(
+      current.id,
+      alias.id,
+      parsed.action === "verify" ? "verified" : "rejected",
+      this.actor,
+      parsed.note,
+    );
   }
 
   async promoteMemory(id: string): Promise<MemoryObject> {
@@ -1014,7 +1086,12 @@ export class SpurService {
       visibleIds.has(relationship.from_id) && visibleIds.has(relationship.to_id),
     );
     const memoryEvidence = (await Promise.all(unique(
-      [...matches, ...related].flatMap((item) => item.evidence_ids),
+      [...matches, ...related].flatMap((item) => [
+        ...item.evidence_ids,
+        ...(item.aliases ?? [])
+          .filter((alias) => alias.status !== "rejected")
+          .flatMap((alias) => alias.evidence_ids),
+      ]),
     ).slice(0, 10).map((id) => this.getEvidence(id)))).flatMap((evidence) => {
       if (!evidence || isSecurityIssueEvidence(evidence)) return [];
       const excerptLines = evidence.excerpt.split("\n").slice(0, 40);
@@ -1064,6 +1141,7 @@ export class SpurService {
         "Answer the user's question with the MCP host model; Spur has not called a model.",
         "Do not disclose security findings or exploitable weaknesses. If the question seeks them, respond only with the security-review referral above.",
         "Treat candidate memory as a lead, not as accepted organizational truth.",
+        "Treat aliases only as retrieval vocabulary. A proposed or user-origin alias is a user-generated signal, not evidence for the capability; say that plainly when the alias matters to the answer. Never use rejected aliases.",
         ...(hasRestrictedMemory ? [`Say only that a security control exists and its details are restricted. Ask ${this.securityContact || "the security owner"}. Do not infer, guess, or describe how it works. Do not say or imply whether it is complete, partial, effective or has gaps, and do not draw conclusions from how many restricted records matched. Do not offer to review or harden it. Do not use repository evidence to reconstruct the restricted details.`] : []),
         ...(this.applicationNaming ? [`Use ${this.applicationNaming.canonicalName} as the product name in your own answer. Aliases such as ${this.applicationNaming.aliases.join(", ")} are search terms, not preferred display names. Do not alter quoted source evidence or technical identifiers.`] : []),
         "This packet is a ranked, limited search result, not an inventory of everything Spur knows. An empty or weak match does not prove that a feature is absent or has never been modeled. Say what you could not verify from this packet, not that Spur does not know it.",
@@ -1259,7 +1337,13 @@ export class SpurService {
       repository,
       run.source_version,
       parsed.objects.flatMap((object) =>
-        object.evidence.map((evidence) => ({ label: object.external_id, evidence })),
+        [
+          ...object.evidence.map((evidence) => ({ label: object.external_id, evidence })),
+          ...(object.aliases ?? []).flatMap((alias) => alias.evidence.map((evidence) => ({
+            label: `${object.external_id} alias ${alias.name}`,
+            evidence,
+          }))),
+        ],
       ),
     );
 
@@ -1323,8 +1407,41 @@ export class SpurService {
             : {}),
         },
       });
+      for (const alias of object.aliases ?? []) {
+        const aliasEvidenceIds = await Promise.all(alias.evidence.map(async (candidate, index) =>
+          (await this.store.storeEvidence(source.id, {
+            id: `${object.external_id}:alias:${alias.name}:${index + 1}`,
+            kind: candidate.kind,
+            repo: source.name,
+            commit_sha: run.source_version,
+            path: candidate.path,
+            start_line: candidate.start_line,
+            end_line: candidate.end_line,
+            excerpt: candidate.excerpt,
+            supports: ["observed_behavior"],
+          })).id,
+        ));
+        await this.store.upsertMemoryAlias({
+          memoryId: item.id,
+          name: alias.name,
+          status: "proposed",
+          origin: "repository",
+          scope: "repository",
+          sourceId: source.id,
+          sourceVersion: run.source_version,
+          evidenceIds: aliasEvidenceIds,
+          actor: run.client_name,
+          metadata: {
+            epistemic_status: "agent_modeled_from_code",
+            evidence_status: "verified",
+            ingestion_run_id: run.id,
+            external_id: object.external_id,
+            client_name: run.client_name,
+          },
+        });
+      }
       await this.store.mapSourceAnalysisObject(run.id, object.external_id, item.id);
-      items.push(this.displayMemory(item));
+      items.push(this.displayMemory((await this.store.getMemory(item.id))!));
     }
 
     return { run: (await this.store.getSourceAnalysisRun(run.id))!, items };

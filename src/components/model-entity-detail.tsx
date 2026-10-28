@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/table";
 import { entityDefinitionSchema } from "@/core/memory-types";
 import type {
+  MemoryAlias,
   MemoryObject,
   MemoryRelationship,
   StoredEvidence,
@@ -39,9 +40,17 @@ import { KIND_LABELS, MODEL_KINDS, ModelHeader, StateBadge } from "./model-views
 type MemoryDetail = {
   item: MemoryObject;
   evidence: StoredEvidence[];
+  alias_evidence: Record<string, StoredEvidence[]>;
   relationships: MemoryRelationship[];
   related: MemoryObject[];
-  management: { edit: boolean; promote: boolean; archive: boolean; merge: boolean };
+  management: {
+    edit: boolean;
+    promote: boolean;
+    archive: boolean;
+    merge: boolean;
+    propose_alias: boolean;
+    review_alias: boolean;
+  };
 };
 
 function apiError(payload: unknown, fallback: string): string {
@@ -92,6 +101,9 @@ export function ModelEntityDetail({
   const [owner, setOwner] = useState("");
   const [steward, setSteward] = useState("");
   const [entityDefinitionText, setEntityDefinitionText] = useState("");
+  const [aliasName, setAliasName] = useState("");
+  const [aliasBusy, setAliasBusy] = useState<string | null>(null);
+  const [aliasReviewNotes, setAliasReviewNotes] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -220,6 +232,75 @@ export function ModelEntityDetail({
       setError(caught instanceof Error ? caught.message : "Catalog objects could not be merged.");
     } finally {
       setBusy(null);
+    }
+  }
+
+  function updateAlias(alias: MemoryAlias) {
+    setDetail((current) => current ? {
+      ...current,
+      item: {
+        ...current.item,
+        aliases: [
+          ...(current.item.aliases ?? []).filter((candidate) => candidate.id !== alias.id),
+          alias,
+        ].sort((left, right) => left.created_at.localeCompare(right.created_at)),
+      },
+    } : current);
+  }
+
+  async function submitAlias(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = aliasName.trim();
+    if (!name) return;
+    setAliasBusy("propose");
+    setError(null);
+    try {
+      const response = await fetch(`/api/memory/${encodeURIComponent(entityId)}/aliases`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-spur-organization": workspace.organization.slug,
+        },
+        body: JSON.stringify({ name }),
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok) throw new Error(apiError(payload, "Alias proposal could not be saved."));
+      updateAlias(payload as MemoryAlias);
+      setAliasName("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Alias proposal could not be saved.");
+    } finally {
+      setAliasBusy(null);
+    }
+  }
+
+  async function reviewAlias(alias: MemoryAlias, action: "verify" | "reject") {
+    const note = aliasReviewNotes[alias.id]?.trim() ?? "";
+    if (note.length < 3) return;
+    setAliasBusy(alias.id);
+    setError(null);
+    try {
+      const response = await fetch(`/api/memory/${encodeURIComponent(entityId)}/aliases`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-spur-organization": workspace.organization.slug,
+        },
+        body: JSON.stringify({
+          alias_id: alias.id,
+          action,
+          note,
+          confirmation: alias.id,
+        }),
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok) throw new Error(apiError(payload, "Alias review could not be saved."));
+      updateAlias(payload as MemoryAlias);
+      setAliasReviewNotes((notes) => ({ ...notes, [alias.id]: "" }));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Alias review could not be saved.");
+    } finally {
+      setAliasBusy(null);
     }
   }
 
@@ -556,6 +637,83 @@ export function ModelEntityDetail({
               ) : <p className="mt-6 text-sm text-muted-foreground">No data locations modeled yet.</p>}
             </section>
           ) : null}
+
+          <section className="border-b py-8" aria-labelledby="aliases-heading">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h2 id="aliases-heading" className="text-base font-semibold">Aliases</h2>
+                <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
+                  Alternate names improve retrieval without changing the canonical title. Every alias keeps its origin and review status.
+                </p>
+              </div>
+              <Badge variant="secondary" className="font-normal">{item.aliases?.length ?? 0} recorded</Badge>
+            </div>
+
+            {(item.aliases?.length ?? 0) > 0 ? (
+              <div className="mt-5 divide-y border-y">
+                {item.aliases?.map((alias) => (
+                  <article key={alias.id} className="py-5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium">{alias.name}</p>
+                      <Badge variant={alias.origin === "user" ? "warning" : "outline"}>
+                        {alias.origin === "user" ? "User-generated" : alias.origin === "repository" ? "Repository-derived" : alias.origin}
+                      </Badge>
+                      <Badge variant={alias.status === "verified" ? "success" : alias.status === "rejected" ? "destructive" : "secondary"}>
+                        {alias.status}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {alias.scope} scope · submitted by {alias.actor ?? "Unknown"} · {dateTime(alias.created_at)}
+                    </p>
+                    {(detail.alias_evidence[alias.id]?.length ?? 0) > 0 ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Evidence: {detail.alias_evidence[alias.id].map((evidence) => `${evidence.path}:${evidence.start_line}-${evidence.end_line}`).join(", ")}
+                      </p>
+                    ) : alias.origin === "user" ? (
+                      <p className="mt-1 text-xs text-muted-foreground">No source evidence attached; this remains attributable to the user.</p>
+                    ) : null}
+                    {alias.reviewed_at ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Reviewed by {alias.reviewed_by ?? "Unknown"} · {dateTime(alias.reviewed_at)}{alias.review_note ? ` · ${alias.review_note}` : ""}
+                      </p>
+                    ) : null}
+                    {alias.status === "proposed" && management?.review_alias ? (
+                      <div className="mt-4 max-w-2xl">
+                        <label htmlFor={`alias-review-${alias.id}`} className="mb-1.5 block text-xs font-medium text-muted-foreground">Review note</label>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <Input
+                            id={`alias-review-${alias.id}`}
+                            value={aliasReviewNotes[alias.id] ?? ""}
+                            onChange={(event) => setAliasReviewNotes((notes) => ({ ...notes, [alias.id]: event.target.value }))}
+                            minLength={3}
+                            maxLength={500}
+                            placeholder="Evidence or reason for this decision"
+                          />
+                          <Button type="button" size="sm" disabled={aliasBusy !== null || (aliasReviewNotes[alias.id]?.trim().length ?? 0) < 3} onClick={() => void reviewAlias(alias, "verify")}>Verify</Button>
+                          <Button type="button" size="sm" variant="outline" disabled={aliasBusy !== null || (aliasReviewNotes[alias.id]?.trim().length ?? 0) < 3} onClick={() => void reviewAlias(alias, "reject")}>Reject</Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            ) : <p className="mt-5 text-sm text-muted-foreground">No aliases recorded.</p>}
+
+            {management?.propose_alias ? (
+              <form onSubmit={submitAlias} className="mt-6 max-w-2xl">
+                <label htmlFor="alias-name" className="mb-1.5 block text-sm font-medium">Suggest an alias</label>
+                <p className="mb-3 text-xs leading-5 text-muted-foreground">
+                  This is stored as a user-generated proposal. It cannot verify this catalog item or close a knowledge gap.
+                </p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input id="alias-name" value={aliasName} onChange={(event) => setAliasName(event.target.value)} minLength={2} maxLength={160} placeholder="Alternate name" />
+                  <Button type="submit" disabled={aliasBusy !== null || aliasName.trim().length < 2}>
+                    {aliasBusy === "propose" ? <LoaderCircle className="size-4 animate-spin" /> : null}Save proposal
+                  </Button>
+                </div>
+              </form>
+            ) : null}
+          </section>
 
           <section className="border-b py-8" aria-labelledby="provenance-heading">
             <h2 id="provenance-heading" className="text-base font-semibold">Provenance</h2>

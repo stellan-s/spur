@@ -39,6 +39,7 @@ export function maskRestrictedMemory(item: MemoryObject, securityContact?: strin
     source_ids: [],
     source_version: null,
     actor: null,
+    aliases: [],
     metadata: { sensitivity: "restricted" },
   };
 }

@@ -226,6 +226,16 @@ describe("AI-first Spur service", () => {
               end_line: evidence!.endLine,
               excerpt: evidence!.excerpt,
             }],
+            aliases: [{
+              name: "Shipping address change",
+              evidence: [{
+                kind: evidence!.kind === "test" ? "test" : "code",
+                path: evidence!.path,
+                start_line: evidence!.startLine,
+                end_line: evidence!.endLine,
+                excerpt: evidence!.excerpt,
+              }],
+            }],
           },
           {
             external_id: "control.dispatched-address-lock",
@@ -248,6 +258,15 @@ describe("AI-first Spur service", () => {
       expect(objects.items.every((item) => item.state === "candidate")).toBe(true);
       expect(objects.items.every((item) => item.authority === "ai_inference")).toBe(true);
       expect(objects.items.every((item) => item.actor === "Claude Code")).toBe(true);
+      expect(objects.items[0]?.aliases).toEqual([
+        expect.objectContaining({
+          name: "Shipping address change",
+          origin: "repository",
+          scope: "repository",
+          status: "proposed",
+          actor: "Claude Code",
+        }),
+      ]);
 
       const linked = (await service.proposeRelationships({
         run_id: run.id,

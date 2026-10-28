@@ -167,7 +167,10 @@ export function loadConfig(
       "SPUR_ORGANIZATION_SLUG must be a lowercase slug of letters, numbers, and hyphens.",
     );
   }
-  const configuredRoot = configuredRepositoryRoot || "./fixture-repo";
+  // Keep the bundled repository for the unnamed demo only. A named
+  // single-tenant installation may intentionally run without a source
+  // repository and use its persisted model as the source of truth.
+  const configuredRoot = configuredRepositoryRoot || (!configuredSlug ? "./fixture-repo" : "");
   const configuredProvider =
     env.SPUR_SYNTHESIS_PROVIDER?.trim() ||
     env.SPUR_MODEL_PROVIDER?.trim() ||
@@ -180,7 +183,9 @@ export function loadConfig(
     );
   }
   const provider = parsedProvider.data;
-  const repositoryRoot = tenancy === "single" ? path.resolve(projectRoot, configuredRoot) : "";
+  const repositoryRoot = tenancy === "single" && configuredRoot
+    ? path.resolve(projectRoot, configuredRoot)
+    : "";
   const applicationName = env.SPUR_APPLICATION_NAME?.trim() || undefined;
   const applicationAliases = (env.SPUR_APPLICATION_ALIASES?.split(",") ?? [])
     .map((alias) => alias.trim())

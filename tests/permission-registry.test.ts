@@ -89,6 +89,34 @@ describe("permission registries", () => {
     expect(enabled).toEqual(["get_memory", "get_modeling_schema", "get_product_document", "list_product_documents", "search_memory", "trace_relationships"]);
   });
 
+  it("separates alias contribution from alias review", async () => {
+    const principal: Principal = {
+      userId: "usr_alias_contributor",
+      organizationId: "demo",
+      email: "contributor@example.com",
+      displayName: "Contributor",
+      accessStatus: "approved",
+      permissions: new Set<Permission>(["mcp.connect", "memory.read", "memory.propose"]),
+    };
+    const featureSet = {
+      ask: true,
+      code_search: "on" as const,
+      model_provider: "none" as const,
+      modelling_writes: true,
+      isms: true,
+      wiki: true,
+      remote_mcp: false,
+      knowledge_gaps: true,
+    };
+    const contributor = await createSpurMcpServer({ principal, features: featureSet }) as unknown as InspectableMcpServer;
+    expect(contributor._registeredTools.propose_memory_alias.enabled).toBe(true);
+    expect(contributor._registeredTools.review_memory_alias.enabled).toBe(false);
+
+    principal.permissions.add("memory.promote");
+    const reviewer = await createSpurMcpServer({ principal, features: featureSet }) as unknown as InspectableMcpServer;
+    expect(reviewer._registeredTools.review_memory_alias.enabled).toBe(true);
+  });
+
   it("declares the global guide separately from organisation pages", () => {
     expect(pageAccess("/guide")).toBe("public");
     expect(pageAccess("/o/example/ask")).toBe("memory.ask");

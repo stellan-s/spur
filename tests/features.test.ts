@@ -124,6 +124,7 @@ describe("organisation features", () => {
     expect(server._registeredTools.investigate.enabled).toBe(false);
     expect(server._registeredTools.search_repository.enabled).toBe(false);
     expect(server._registeredTools.propose_memory_objects.enabled).toBe(false);
+    expect(server._registeredTools.propose_memory_alias.enabled).toBe(false);
     expect(server._registeredTools.list_isms_controls.enabled).toBe(false);
     expect(server._registeredTools.list_knowledge_gaps.enabled).toBe(false);
     expect(server._registeredTools.search_memory.enabled).toBe(true);

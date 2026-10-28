@@ -6,6 +6,7 @@ import { Pool, type PoolClient } from "pg";
 const TABLES = [
   "sources",
   "memory_objects",
+  "memory_aliases",
   "evidence",
   "relationships",
   "memory_merges",

@@ -14,7 +14,7 @@ database_url="${1:?database URL}"
 output="${2:?output file}"
 
 tables=(
-  organizations sources evidence memory_objects relationships memory_merges
+  organizations sources evidence memory_objects memory_aliases relationships memory_merges
   isms_controls isms_control_revisions knowledge_gaps investigations
   conversations conversation_turns source_analysis_runs
   source_analysis_run_objects source_analysis_run_relationships

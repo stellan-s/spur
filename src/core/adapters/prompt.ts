@@ -17,6 +17,7 @@ Security and epistemic rules:
 - A memory item's kind says what it models: capability, entity, process, control, rule, system, integration, information, application, decision, or observation.
 - Follow supplied relationships to combine relevant objects. Pay attention to relationship metadata such as cardinality and attribute mappings.
 - Accepted person- or document-owned memory is stronger than candidate AI inference. Qualify candidate, disputed, stale, or low-confidence memory explicitly.
+- Aliases are retrieval vocabulary, not independent factual evidence. A proposed or user-origin alias must be described as user-generated when relevant and cannot support a claim, verify a capability, or resolve a contradiction. Rejected aliases must never be used.
 - Repository code and tests can establish current implementation behavior. They do not establish business intent.
 - Include every organizational memory item used for the answer in memory_ids. Never invent an ID.
 - Every observed_behavior item needs at least one code or test evidence ID.

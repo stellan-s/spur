@@ -82,6 +82,8 @@ export const MCP_TOOL_PERMISSIONS = {
   get_modeling_schema: "memory.read",
   begin_source_analysis: "memory.propose",
   propose_memory_objects: "memory.propose",
+  propose_memory_alias: "memory.propose",
+  review_memory_alias: "memory.promote",
   propose_relationships: "memory.relate",
   add_evidence: "memory.add_evidence",
   complete_source_analysis: "memory.propose",
@@ -130,6 +132,8 @@ export const API_ROUTE_PERMISSIONS = {
   "GET /api/knowledge-gaps": "knowledge_gaps.read",
   "PATCH /api/knowledge-gaps/:id": "knowledge_gaps.write",
   "POST /api/memory/:id/merge": "memory.merge",
+  "POST /api/memory/:id/aliases": "memory.propose",
+  "PATCH /api/memory/:id/aliases": "memory.promote",
   "GET /api/memory/:id": "memory.read",
   "PATCH /api/memory/:id": "authenticated",
   "GET /api/memory": "memory.read",
@@ -216,6 +220,8 @@ export const API_ROUTE_FEATURES = {
   "GET /api/knowledge-gaps": ["knowledge_gaps"],
   "PATCH /api/knowledge-gaps/:id": ["knowledge_gaps"],
   "POST /api/memory/:id/merge": [],
+  "POST /api/memory/:id/aliases": ["modelling_writes"],
+  "PATCH /api/memory/:id/aliases": [],
   "GET /api/memory/:id": [],
   "PATCH /api/memory/:id": ["modelling_writes"],
   "GET /api/memory": [],
@@ -289,6 +295,8 @@ export const MCP_TOOL_FEATURES = {
   get_modeling_schema: [],
   begin_source_analysis: ["modelling_writes"],
   propose_memory_objects: ["modelling_writes"],
+  propose_memory_alias: ["modelling_writes"],
+  review_memory_alias: [],
   propose_relationships: ["modelling_writes"],
   add_evidence: ["modelling_writes"],
   complete_source_analysis: ["modelling_writes"],
@@ -319,6 +327,7 @@ export function normalizeApiPath(pathname: string): string {
     .replace(/^\/api\/knowledge-gaps\/[^/]+$/, "/api/knowledge-gaps/:id")
     .replace(/^\/api\/isms\/controls\/[^/]+$/, "/api/isms/controls/:id")
     .replace(/^\/api\/memory\/[^/]+\/merge$/, "/api/memory/:id/merge")
+    .replace(/^\/api\/memory\/[^/]+\/aliases$/, "/api/memory/:id/aliases")
     .replace(/^\/api\/memory\/[^/]+$/, "/api/memory/:id")
     .replace(/^\/api\/admin\/access-requests\/[^/]+$/, "/api/admin/access-requests/:id")
     .replace(/^\/api\/admin\/roles\/[^/]+$/, "/api/admin/roles/:id")

@@ -32,12 +32,15 @@ import {
   editMemoryBaseSchema,
   mergeMemoryInputSchema,
   memoryKindSchema,
+  memoryAliasSchema,
   memoryObjectSchema,
   memoryRelationshipSchema,
   modeledMemoryKindSchema,
+  proposeMemoryAliasInputSchema,
   proposeMemoryObjectsInputSchema,
   proposeRelationshipsInputSchema,
   recordDecisionInputSchema,
+  reviewMemoryAliasInputSchema,
   sourceAnalysisRunSchema,
   storedEvidenceSchema,
 } from "../core/memory-types";
@@ -186,7 +189,7 @@ export async function createSpurMcpServer(options: {
     { name: "spur", version: "0.2.0" },
     {
       instructions:
-        "For questions about implementation or organizational memory, prefer investigate; search_memory only locates records. Do not answer broad quality or overall reliability questions about an application, API, codebase, architecture, or team, and do not assemble such an assessment from raw Spur tools. State Spur's boundary and ask for a specific, evidence-checkable question about behavior, rules, controls, dependencies, decisions, or recorded metrics. For questions about governed ISMS or audit controls, use search_isms_controls and get_isms_control first, then investigate only if implementation detail is needed. An ISMS control is distinct from a technical safeguard found in code; a model mapping or an approved control does not prove effectiveness. For answers based on Spur, write for a non-technical business reader in the user's language. Use a quiet **Spur** label and answer directly. By default, use one short paragraph of 2–4 sentences (roughly 80 words), or at most 3 short bullets when listing choices or steps. Include only conditions and caveats that materially change the answer; do not append unrelated findings. Keep code identifiers, API routes, HTTP status codes, file paths, line numbers, internal IDs, and commit hashes out of the main answer. Give a compact Sources line only when it helps attribution, and offer technical detail instead of adding it unasked. Explain code-derived behavior as observed behavior, not approved policy. If knowledge is only a candidate, say so in ordinary language. Never invent intent or certainty. Expand when the user asks for detail, a walkthrough, or a specific format; do not shorten an answer so much that it becomes misleading. End every user-facing answer based on Spur with this notice, translated to the user's language while preserving its meaning: Spur and the model are in BETA. Double-check the answer against the original sources." + productNameInstruction,
+        "For questions about implementation or organizational memory, prefer investigate; search_memory only locates records. Do not answer broad quality or overall reliability questions about an application, API, codebase, architecture, or team, and do not assemble such an assessment from raw Spur tools. State Spur's boundary and ask for a specific, evidence-checkable question about behavior, rules, controls, dependencies, decisions, or recorded metrics. For questions about governed ISMS or audit controls, use search_isms_controls and get_isms_control first, then investigate only if implementation detail is needed. An ISMS control is distinct from a technical safeguard found in code; a model mapping or an approved control does not prove effectiveness. For answers based on Spur, write for a non-technical business reader in the user's language. Use a quiet **Spur** label and answer directly. By default, use one short paragraph of 2–4 sentences (roughly 80 words), or at most 3 short bullets when listing choices or steps. Include only conditions and caveats that materially change the answer; do not append unrelated findings. Keep code identifiers, API routes, HTTP status codes, file paths, line numbers, internal IDs, and commit hashes out of the main answer. Give a compact Sources line only when it helps attribution, and offer technical detail instead of adding it unasked. Explain code-derived behavior as observed behavior, not approved policy. If knowledge is only a candidate, say so in ordinary language. Aliases are retrieval vocabulary only; proposed or user-origin aliases are user-generated signals, not evidence for a capability, and rejected aliases must never be used. Never invent intent or certainty. Expand when the user asks for detail, a walkthrough, or a specific format; do not shorten an answer so much that it becomes misleading. End every user-facing answer based on Spur with this notice, translated to the user's language while preserving its meaning: Spur and the model are in BETA. Double-check the answer against the original sources." + productNameInstruction,
     },
   );
   const originalRegisterTool = server.registerTool.bind(server);
@@ -418,6 +421,12 @@ export async function createSpurMcpServer(options: {
           location_fields: z.array(z.string()),
           relationship_cardinalities: z.array(z.string()),
         }),
+        alias_modeling: z.object({
+          object_field: z.literal("aliases"),
+          stored_status: z.literal("proposed"),
+          origin: z.literal("repository"),
+          evidence_required: z.literal(true),
+        }),
         relationship_predicates: z.record(z.string(), z.string()),
         layer_order: z.array(z.string()),
         lifecycle: z.array(z.string()),
@@ -460,12 +469,18 @@ export async function createSpurMcpServer(options: {
             "many_to_many",
           ],
         },
+        alias_modeling: {
+          object_field: "aliases" as const,
+          stored_status: "proposed" as const,
+          origin: "repository" as const,
+          evidence_required: true as const,
+        },
         relationship_predicates: { ...RELATIONSHIP_PREDICATES },
         layer_order: ["capability", "process", "rule", "control", "information", "entity", "system", "integration", "observation"],
         lifecycle: [
           "Search or inspect the connected repository.",
           "Begin a source analysis pinned to the returned commit SHA.",
-          "Propose candidate memory objects with exact source excerpts.",
+          "Propose candidate memory objects and any repository-derived aliases with exact source excerpts.",
           "Propose relationships using run-local external IDs, or the IDs of memory stored by earlier runs.",
           "Complete the source analysis run.",
         ],
@@ -478,6 +493,7 @@ export async function createSpurMcpServer(options: {
           "Set each data location's role in role: system_of_record, copy, legacy, history, reference, or derived. Name the system that holds the data, not the service that writes it. Give each entity one system of record; an API resource that serves stored data is a copy.",
           "Use only the predicates in relationship_predicates, in the stated direction. Entity to entity relationships use belongs_to (child to parent, many_to_one or one_to_one) or references, with cardinality.",
           "Titles are business names in sentence case. Keep code identifiers, table names and file paths out of titles; put them in technical_name, locators or the statement.",
+          "Put an alternate business or product term in aliases only when a minimal exact excerpt supports that terminology. Aliases remain separately reviewable proposals and never replace the canonical title.",
           "Name processes as activities (\"Publishing a project setup draft\"). A statement of what always holds is a rule, not a process.",
           "Do not propose ISMS register controls (CTRL-nnn). Each register control has one mirror object that repeats the register wording. Model the technical safeguard and link the mirror to it with realised_by.",
           "When another repository confirms memory already in Spur, call add_evidence on that mem_ ID instead of proposing a duplicate.",
@@ -522,7 +538,7 @@ export async function createSpurMcpServer(options: {
     {
       title: "Propose evidence-backed memory objects",
       description:
-        "Store candidate systems, integrations, information, entities with attributes and data locations, capabilities, processes, controls, rules, or observations. Keep titles and statements in business language; code identifiers belong only in technical fields and minimal evidence. Set sensitivity to restricted for controls whose details would help an attacker, such as request signing, token issuing or revocation, rate limits, and session rules. Every short, exact code/test excerpt is verified at the run commit before any object is stored. Data, fixtures, snapshots, generated files, dependencies, and oversized excerpts are refused; restricted details are never returned by read tools.",
+        "Store candidate systems, integrations, information, entities with attributes and data locations, capabilities, processes, controls, rules, or observations. Include alternate business or product terms as aliases only with their own exact evidence; aliases remain separately reviewable proposals and never replace the canonical title. Keep titles and statements in business language; code identifiers belong only in technical fields and minimal evidence. Set sensitivity to restricted for controls whose details would help an attacker, such as request signing, token issuing or revocation, rate limits, and session rules. Every short, exact code/test excerpt is verified at the run commit before any object is stored. Data, fixtures, snapshots, generated files, dependencies, and oversized excerpts are refused; restricted details are never returned by read tools.",
       inputSchema: proposeMemoryObjectsInputSchema,
       outputSchema: z.object({
         run: sourceAnalysisRunSchema,
@@ -545,6 +561,61 @@ export async function createSpurMcpServer(options: {
       const result = await withSpur((service) => service.proposeMemoryObjects(input));
       return {
         content: [{ type: "text", text: `Stored ${result.items.length} verified candidate memory objects.` }, { type: "text", text: MCP_BETA_NOTICE }],
+        structuredContent: result,
+      };
+    },
+  );
+
+  server.registerTool(
+    "propose_memory_alias",
+    {
+      title: "Suggest an alias for modeled knowledge",
+      description:
+        "Record a user's alternate name for one existing memory object. This creates a clearly user-generated proposal only: it does not edit the object, verify the alias, promote knowledge, or resolve a gap. Use only when the user explicitly offers or asks to save an alias.",
+      inputSchema: proposeMemoryAliasInputSchema,
+      outputSchema: memoryAliasSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async (input) => {
+      requireNoSecurityFinding(input);
+      const result = await withSpur(async (service) => {
+        await requireVisibleMemory(service, input.memory_id);
+        return service.proposeMemoryAlias(input, "mcp");
+      });
+      return {
+        content: [{ type: "text", text: `Stored “${result.name}” as a user-generated alias proposal. It is not verified knowledge.` }, { type: "text", text: MCP_BETA_NOTICE }],
+        structuredContent: result,
+      };
+    },
+  );
+
+  server.registerTool(
+    "review_memory_alias",
+    {
+      title: "Review a proposed memory alias",
+      description:
+        "Verify or reject one alias proposal without changing the canonical memory object. Requires reviewer permission and explicit human authorization; repeat the exact alias ID as confirmation. Verification preserves whether the alias originally came from a user or repository.",
+      inputSchema: reviewMemoryAliasInputSchema,
+      outputSchema: memoryAliasSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async (input) => {
+      const result = await withSpur(async (service) => {
+        await requireVisibleMemory(service, input.memory_id);
+        return service.reviewMemoryAlias(input);
+      });
+      return {
+        content: [{ type: "text", text: `${result.status === "verified" ? "Verified" : "Rejected"} alias: ${result.name}. Its ${result.origin} origin remains recorded.` }, { type: "text", text: MCP_BETA_NOTICE }],
         structuredContent: result,
       };
     },

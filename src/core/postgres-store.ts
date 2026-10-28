@@ -22,12 +22,17 @@ import { queryKeywords, queryTerms } from "./search";
 import { isRestrictedMemory, isSecurityIssueMemory } from "./security-disclosure";
 import {
   entityDefinitionSchema,
+  memoryAliasSchema,
   memoryObjectSchema,
   memoryRelationshipSchema,
   sourceAnalysisRunSchema,
   sourceSchema,
   storedEvidenceSchema,
   type ConversationSummary,
+  type MemoryAlias,
+  type MemoryAliasOrigin,
+  type MemoryAliasScope,
+  type MemoryAliasStatus,
   type MemoryKind,
   type MemoryObject,
   type MemoryRelationship,
@@ -52,6 +57,22 @@ type MemoryWrite = {
   sourceIds?: string[];
   sourceVersion?: string | null;
   actor?: string | null;
+  metadata?: JsonRecord;
+};
+
+type MemoryAliasWrite = {
+  memoryId: string;
+  name: string;
+  status: MemoryAliasStatus;
+  origin: MemoryAliasOrigin;
+  scope: MemoryAliasScope;
+  sourceId?: string | null;
+  sourceVersion?: string | null;
+  evidenceIds?: string[];
+  actor?: string | null;
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
+  reviewNote?: string | null;
   metadata?: JsonRecord;
 };
 
@@ -165,13 +186,27 @@ function rowToSource(row: QueryResultRow): Source {
   });
 }
 
-function rowToMemory(row: QueryResultRow): MemoryObject {
+function rowToMemory(row: QueryResultRow, aliases?: MemoryAlias[]): MemoryObject {
+  const storedAliases = aliases ?? (
+    Array.isArray(parseJson(row.aliases_json))
+      ? (parseJson(row.aliases_json) as QueryResultRow[]).map(rowToMemoryAlias)
+      : []
+  );
   return memoryObjectSchema.parse({
     ...row,
     confidence: Number(row.confidence),
     subjects: parseStrings(row.subjects_json),
     evidence_ids: parseStrings(row.evidence_ids_json),
     source_ids: parseStrings(row.source_ids_json),
+    metadata: parseRecord(row.metadata_json),
+    aliases: storedAliases,
+  });
+}
+
+function rowToMemoryAlias(row: QueryResultRow): MemoryAlias {
+  return memoryAliasSchema.parse({
+    ...row,
+    evidence_ids: parseStrings(row.evidence_ids_json),
     metadata: parseRecord(row.metadata_json),
   });
 }
@@ -261,6 +296,28 @@ export class PostgresMemoryStore {
     }
   }
 
+  private async memoryRows(
+    rows: QueryResultRow[],
+    database: Queryable = this.pool,
+  ): Promise<MemoryObject[]> {
+    if (!rows.length) return [];
+    const memoryIds = rows.map((row) => String(row.id));
+    const aliasRows = await this.query(
+      `SELECT * FROM memory_aliases
+       WHERE organization_id = $1 AND memory_id = ANY($2::text[])
+       ORDER BY created_at, id`,
+      [this.organizationId, memoryIds],
+      database,
+    );
+    const aliasesByMemory = new Map<string, MemoryAlias[]>();
+    for (const alias of aliasRows.map(rowToMemoryAlias)) {
+      const aliases = aliasesByMemory.get(alias.memory_id) ?? [];
+      aliases.push(alias);
+      aliasesByMemory.set(alias.memory_id, aliases);
+    }
+    return rows.map((row) => rowToMemory(row, aliasesByMemory.get(String(row.id)) ?? []));
+  }
+
   async upsertSource(input: {
     id?: string;
     kind: SourceKind;
@@ -326,6 +383,9 @@ export class PostgresMemoryStore {
     for (const { memory_id: memoryId } of mappedRows) {
       const memory = await this.getMemory(memoryId, database);
       for (const evidenceId of memory?.evidence_ids ?? []) evidenceIds.add(evidenceId);
+      for (const alias of memory?.aliases ?? []) {
+        for (const evidenceId of alias.evidence_ids) evidenceIds.add(evidenceId);
+      }
     }
     const [relationshipRow] = await this.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM source_analysis_run_relationships
@@ -559,11 +619,109 @@ export class PostgresMemoryStore {
 
   async getMemory(id: string, database: Queryable = this.pool): Promise<MemoryObject | null> {
     const [row] = await this.query(
-      "SELECT * FROM memory_objects WHERE organization_id = $1 AND id = $2",
+      `SELECT memory_objects.*,
+        COALESCE((
+          SELECT jsonb_agg(to_jsonb(memory_aliases) ORDER BY created_at, id)
+          FROM memory_aliases
+          WHERE memory_aliases.organization_id = memory_objects.organization_id
+            AND memory_aliases.memory_id = memory_objects.id
+        ), '[]'::jsonb) AS aliases_json
+       FROM memory_objects WHERE organization_id = $1 AND id = $2`,
       [this.organizationId, id],
       database,
     );
     return row ? rowToMemory(row) : null;
+  }
+
+  async getMemoryAlias(id: string, database: Queryable = this.pool): Promise<MemoryAlias | null> {
+    const [row] = await this.query(
+      "SELECT * FROM memory_aliases WHERE organization_id = $1 AND id = $2",
+      [this.organizationId, id],
+      database,
+    );
+    return row ? rowToMemoryAlias(row) : null;
+  }
+
+  async listMemoryAliases(
+    memoryId: string,
+    database: Queryable = this.pool,
+  ): Promise<MemoryAlias[]> {
+    const rows = await this.query(
+      `SELECT * FROM memory_aliases
+       WHERE organization_id = $1 AND memory_id = $2
+       ORDER BY created_at, id`,
+      [this.organizationId, memoryId],
+      database,
+    );
+    return rows.map(rowToMemoryAlias);
+  }
+
+  async upsertMemoryAlias(
+    input: MemoryAliasWrite,
+    database: Queryable = this.pool,
+  ): Promise<MemoryAlias> {
+    const normalizedName = normalizedQuestionKey(input.name);
+    if (!normalizedName) throw new InputError("Alias must contain letters or numbers.");
+    if (input.scope === "repository" && !input.sourceId) {
+      throw new InputError("Repository aliases require a source.");
+    }
+    if (input.origin === "repository" && !input.sourceId) {
+      throw new InputError("Repository-derived aliases require a source.");
+    }
+    const id = stableId("alias", [
+      input.memoryId,
+      normalizedName,
+      input.origin,
+      input.sourceId ?? "",
+      input.actor ?? "",
+    ].join(":"));
+    const existing = await this.getMemoryAlias(id, database);
+    const timestamp = now();
+    const evidenceIds = [...new Set([
+      ...(existing?.evidence_ids ?? []),
+      ...(input.evidenceIds ?? []),
+    ])];
+    await this.query(
+      `INSERT INTO memory_aliases (
+        organization_id, id, memory_id, name, normalized_name, status, origin, scope,
+        source_id, source_version, evidence_ids_json, actor, created_at, updated_at,
+        reviewed_at, reviewed_by, review_note, metadata_json
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12,
+        $13, $14, $15, $16, $17, $18::jsonb)
+      ON CONFLICT(organization_id, id) DO UPDATE SET
+        name = EXCLUDED.name,
+        source_version = COALESCE(EXCLUDED.source_version, memory_aliases.source_version),
+        evidence_ids_json = EXCLUDED.evidence_ids_json,
+        updated_at = EXCLUDED.updated_at,
+        metadata_json = memory_aliases.metadata_json || EXCLUDED.metadata_json`,
+      [this.organizationId, id, input.memoryId, input.name.trim(), normalizedName,
+        input.status, input.origin, input.scope, input.sourceId ?? null,
+        input.sourceVersion ?? null, JSON.stringify(evidenceIds), input.actor ?? null,
+        existing?.created_at ?? timestamp, timestamp, input.reviewedAt ?? null,
+        input.reviewedBy ?? null, input.reviewNote ?? null,
+        JSON.stringify(input.metadata ?? {})],
+      database,
+    );
+    return (await this.getMemoryAlias(id, database))!;
+  }
+
+  async reviewMemoryAlias(
+    memoryId: string,
+    aliasId: string,
+    status: Extract<MemoryAliasStatus, "verified" | "rejected">,
+    actor: string,
+    note: string,
+  ): Promise<MemoryAlias> {
+    const timestamp = now();
+    const [row] = await this.query(
+      `UPDATE memory_aliases SET status = $4, reviewed_at = $5, reviewed_by = $6,
+        review_note = $7, updated_at = $5
+       WHERE organization_id = $1 AND memory_id = $2 AND id = $3
+       RETURNING *`,
+      [this.organizationId, memoryId, aliasId, status, timestamp, actor, note.trim()],
+    );
+    if (!row) throw new NotFoundError("Alias was not found.");
+    return rowToMemoryAlias(row);
   }
 
   async updateMemory(
@@ -670,6 +828,28 @@ export class PostgresMemoryStore {
           await this.link(fromId, relationship.predicate, toId, relationship.metadata, client);
         }
       }
+      for (const alias of await this.listMemoryAliases(sourceId, client)) {
+        await this.upsertMemoryAlias({
+          memoryId: targetId,
+          name: alias.name,
+          status: alias.status,
+          origin: alias.origin,
+          scope: alias.scope,
+          sourceId: alias.source_id,
+          sourceVersion: alias.source_version,
+          evidenceIds: alias.evidence_ids,
+          actor: alias.actor,
+          reviewedAt: alias.reviewed_at,
+          reviewedBy: alias.reviewed_by,
+          reviewNote: alias.review_note,
+          metadata: alias.metadata,
+        }, client);
+      }
+      await this.query(
+        "DELETE FROM memory_aliases WHERE organization_id = $1 AND memory_id = $2",
+        [this.organizationId, sourceId],
+        client,
+      );
       await this.updateMemory(sourceId, {
         state: "deleted",
         metadata: {
@@ -754,7 +934,7 @@ export class PostgresMemoryStore {
           "SELECT * FROM memory_objects WHERE organization_id = $1 AND id = ANY($2::text[]) ORDER BY id FOR SHARE",
           [this.organizationId, memoryIds], client,
         );
-        const items = rows.map(rowToMemory);
+        const items = rows.map((row) => rowToMemory(row));
         if (!items.length || items.length !== memoryIds.length || items.some((item) =>
           item.metadata.deleted_at || !["accepted", "candidate"].includes(item.state) ||
           isRestrictedMemory(item) || isSecurityIssueMemory(item))) {
@@ -792,7 +972,7 @@ export class PostgresMemoryStore {
        ORDER BY updated_at DESC LIMIT $2`,
       [this.organizationId, Math.max(1, Math.min(limit, 200))],
     );
-    return rows.map(rowToMemory);
+    return this.memoryRows(rows);
   }
 
   async listAllMemory(kinds?: MemoryKind[]): Promise<MemoryObject[]> {
@@ -810,7 +990,7 @@ export class PostgresMemoryStore {
            ORDER BY updated_at DESC`,
           [this.organizationId],
         );
-    return rows.map(rowToMemory);
+    return this.memoryRows(rows);
   }
 
   async listRestrictedMemory(): Promise<MemoryObject[]> {
@@ -819,16 +999,20 @@ export class PostgresMemoryStore {
        WHERE organization_id = $1 AND metadata_json->>'sensitivity' = 'restricted'`,
       [this.organizationId],
     );
-    return rows.map(rowToMemory);
+    return this.memoryRows(rows);
   }
 
   async getEvidenceOwners(evidenceId: string): Promise<MemoryObject[]> {
     const rows = await this.query(
-      `SELECT * FROM memory_objects
-       WHERE organization_id = $1 AND evidence_ids_json ? $2`,
+      `SELECT DISTINCT memory_objects.* FROM memory_objects
+       LEFT JOIN memory_aliases
+         ON memory_aliases.organization_id = memory_objects.organization_id
+        AND memory_aliases.memory_id = memory_objects.id
+       WHERE memory_objects.organization_id = $1
+         AND (memory_objects.evidence_ids_json ? $2 OR memory_aliases.evidence_ids_json ? $2)`,
       [this.organizationId, evidenceId],
     );
-    return rows.map(rowToMemory);
+    return this.memoryRows(rows);
   }
 
   async listIsmsControls(
@@ -1038,19 +1222,29 @@ export class PostgresMemoryStore {
           normalizedQuestionKey(item.title) === questionKey ||
           normalizedQuestionKey(originQuestion) === questionKey;
         const statement = normalizedSearchText(`${item.statement} ${item.subjects.join(" ")}`);
+        const verifiedAliases = (item.aliases ?? []).filter((alias) => alias.status === "verified");
+        const proposedAliases = (item.aliases ?? []).filter((alias) => alias.status === "proposed");
+        const verifiedAliasText = normalizedSearchText(verifiedAliases.map((alias) => alias.name).join(" "));
+        const proposedAliasText = normalizedSearchText(proposedAliases.map((alias) => alias.name).join(" "));
         const metadata = normalizedSearchText(JSON.stringify(item.metadata)).slice(0, 16_000);
-        const haystack = `${item.kind} ${title} ${statement} ${metadata}`;
+        const haystack = `${item.kind} ${title} ${statement} ${verifiedAliasText} ${proposedAliasText} ${metadata}`;
         const requiredKeywordMatches = keywords.length >= 4 ? 3 : keywords.length >= 3 ? 2 : 1;
         const keywordMatches = keywords.filter((keyword) => statement.includes(keyword)).length;
+        const aliasKeywordMatches = keywords.filter((keyword) =>
+          verifiedAliasText.includes(keyword) || proposedAliasText.includes(keyword)).length;
         const metadataKeywordMatches = keywords.filter((keyword) => metadata.includes(keyword)).length;
         const score = tokens.reduce(
-          (total, token) => total + (title.includes(token) ? 4 : 0) + (haystack.includes(token) ? 1 : 0),
+          (total, token) => total + (title.includes(token) ? 4 : 0) +
+            (verifiedAliasText.includes(token) ? 3 : 0) +
+            (proposedAliasText.includes(token) ? 1 : 0) +
+            (haystack.includes(token) ? 1 : 0),
           haystack.includes(normalized) ? 8 : 0,
         );
         return {
           item,
           score: score + (exactQuestionMatch ? 20 : 0),
           relevant: exactQuestionMatch || keywordMatches >= requiredKeywordMatches ||
+            aliasKeywordMatches >= Math.min(requiredKeywordMatches, keywords.length) ||
             metadataKeywordMatches >= Math.min(2, keywords.length),
         };
       })

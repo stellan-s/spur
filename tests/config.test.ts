@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { localPrincipal } from "@/core/access-store";
 import { createAdapter } from "@/core/analysis";
 import { listConfiguredOrganizations, loadConfig, loadOrganizationConfigs } from "@/core/config";
+import { sourceProviderFromConfig } from "@/core/source-provider";
 
 const baseEnvironment = {
   NODE_ENV: "test" as const,
@@ -244,6 +245,18 @@ describe("organization configuration", () => {
     expect(config.organization).toEqual({ slug: "demo", name: "Demo organisation" });
     expect(config.repositoryRoot).toBe(path.resolve(process.cwd(), "fixture-repo"));
     expect(config.applicationNaming).toBeUndefined();
+  });
+
+  it("allows a named single-tenant organisation to run without a repository", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      SPUR_ORGANIZATION_SLUG: "harbour-services",
+      SPUR_ORGANIZATION_NAME: "Harbour Services",
+    });
+
+    expect(config.organization).toEqual({ slug: "harbour-services", name: "Harbour Services" });
+    expect(config.repositoryRoot).toBe("");
+    expect(sourceProviderFromConfig(config).root).toBe("");
   });
 
   it("requires an organisation for a configured repository", () => {

@@ -121,6 +121,13 @@ export type AnalysisMemoryItem = {
   authority: string;
   confidence: number;
   subjects: string[];
+  aliases: Array<{
+    name: string;
+    status: "proposed" | "verified" | "rejected";
+    origin: "repository" | "document" | "user" | "system";
+    scope: "organization" | "repository";
+    actor: string | null;
+  }>;
   metadata: Record<string, unknown>;
 };
 
