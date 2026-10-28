@@ -1,0 +1,14 @@
+.git
+.next
+.spur
+node_modules
+coverage
+.env
+.env.*
+!.env.example
+*.log
+*.tsbuildinfo
+deploy/gcp/.terraform
+deploy/gcp/*.tfstate*
+deploy/gcp/*.tfplan
+*.pem

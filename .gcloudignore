@@ -1,0 +1,17 @@
+# Files Cloud Build never receives. Local databases and env files hold
+# restricted memory and secrets.
+.git
+.gitignore
+.gcloudignore
+node_modules/
+.next/
+.spur/
+.env*
+!.env.example
+deploy/gcp/.terraform/
+deploy/gcp/*.tfstate*
+deploy/gcp/terraform.tfvars
+deploy/gcp/*.tfplan
+*.pem
+coverage/
+*.log

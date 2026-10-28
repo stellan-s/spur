@@ -1,0 +1,13 @@
+{
+  "id": "spur-model-repository",
+  "version": "1.0.0",
+  "compatible_spur": ">=0.2.0 <0.3.0",
+  "modeling_contract": "1",
+  "files": {
+    "SKILL.md": "4184e1df842705b7be02cd801468e5cc80a8a38b0c814add578ad2c1fa32ec04",
+    "references/workflow.md": "54c01eec1c40be58af08743de2baed2dddfd5798c1e0552b63725e9cd2207103",
+    "references/evidence-policy.md": "b577260c71729be680ef36f0469ed74bfeacbab531c467489b0cca61860f16a7",
+    "references/modeling-quality.md": "4ee50072c68f5b8bb33d789a83c05e2ed6f2e6c3ad00ce01710d096b0f42c28d",
+    "references/completion-report.md": "3afe0c2a2ba83ab661c79ce414e1ce9136ced33c5f8f36439b3875222165241d"
+  }
+}

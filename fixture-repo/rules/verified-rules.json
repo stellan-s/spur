@@ -1,0 +1,11 @@
+{
+  "rules": [
+    {
+      "id": "returns-30-days",
+      "statement": "A delivered order may be returned for 30 calendar days.",
+      "verified_by_role": "Customer Operations Owner",
+      "verified_on": "2025-03-03",
+      "source": "Policy workshop record 14"
+    }
+  ]
+}
