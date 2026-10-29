@@ -6,7 +6,7 @@ import { authorizePrincipalForApiRequest } from "@/core/auth";
 import { knowledgeGapSchema, updateKnowledgeGapInputSchema } from "@/core/knowledge-gap-types";
 import { GitRepository } from "@/core/repository";
 import { SpurService } from "@/core/spur-service";
-import { createSpurMcpServer } from "@/mcp/server";
+import { createSpurMcpServer, recordKnowledgeGapToolInputSchema } from "@/mcp/server";
 import { EvidenceTestAdapter } from "./support/evidence-test-adapter";
 import { TestMemoryStore } from "./support/postgres";
 
@@ -39,6 +39,25 @@ afterEach(async () => {
 });
 
 describe("knowledge gap resolution", () => {
+  it("requires two distinct retrieval phrasings before MCP can record a gap", () => {
+    const base = {
+      question,
+      reason: "Neither search returned knowledge that answered the question.",
+    };
+    expect(() => recordKnowledgeGapToolInputSchema.parse({
+      ...base,
+      queries_tried: [question],
+    })).toThrow();
+    expect(() => recordKnowledgeGapToolInputSchema.parse({
+      ...base,
+      queries_tried: [question, `  ${question.toUpperCase()}  `],
+    })).toThrow();
+    expect(recordKnowledgeGapToolInputSchema.parse({
+      ...base,
+      queries_tried: [question, "seasonal budget planning"],
+    }).queries_tried).toHaveLength(2);
+  });
+
   it("resolves against catalog items and retains an attributed history without promoting them", async () => {
     const { store, service } = setup();
     const item = await memory(store);

@@ -80,7 +80,7 @@ import { AdminAccess } from "./admin-access";
 import { NavigationProgress } from "./navigation-progress";
 import { WorkspaceLoading } from "./workspace-loading";
 import { RemoveSourceButton } from "./remove-source-button";
-import { useWorkspaceState, type WorkspaceView } from "./workspace-state";
+import { isAuthenticatedSession, useWorkspaceState, type WorkspaceView } from "./workspace-state";
 
 type View = "ask" | "model" | "catalog" | "entity" | "health" | "gaps" | "sources" | "guide" | "isms" | "wiki" | "admin";
 type ThemePreference = "system" | "light" | "dark";
@@ -338,6 +338,8 @@ function WorkspaceSidebar({
   onThemeChange: (preference: ThemePreference) => void;
 }) {
   const organizationId = `${idPrefix}-organization`;
+  const session = workspace.session;
+  const authenticated = isAuthenticatedSession(session);
   return (
     <>
       <div className="min-w-0">
@@ -384,7 +386,7 @@ function WorkspaceSidebar({
 
       <div className="mt-auto border-t px-2 pt-4">
         <div className="flex items-center gap-2.5">
-          {workspace.session?.auth_mode === "google" ? (
+          {authenticated ? (
             <details
               className="relative shrink-0"
               onBlur={(event) => {
@@ -398,7 +400,7 @@ function WorkspaceSidebar({
               }}
             >
               <summary aria-label="Account menu" className="flex size-8 cursor-pointer list-none items-center justify-center rounded-full bg-muted text-xs font-semibold outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-                {(workspace.session.display_name || workspace.session.email).split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase()}
+                {(session.display_name || session.email).split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase()}
               </summary>
               <div className="absolute bottom-full left-0 z-50 mb-2 w-52 rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
                 <Button type="button" variant="ghost" className="w-full justify-start" disabled={signingOut} onClick={onSignOut}>
@@ -412,10 +414,10 @@ function WorkspaceSidebar({
             </span>
           )}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{workspace.session?.display_name ?? workspace.actor}</p>
+            <p className="truncate text-sm font-medium">{session?.display_name ?? workspace.actor}</p>
             <p className="truncate text-xs text-muted-foreground">
-              {workspace.session?.auth_mode === "google"
-                ? workspace.session.email
+              {authenticated
+                ? session.email
                 : `${provider} · Local mode`}
             </p>
           </div>
@@ -1342,7 +1344,7 @@ export function SpurWorkspace({
   }
 
   async function signOut() {
-    if (signingOut || workspace?.session?.auth_mode !== "google") return;
+    if (signingOut || !isAuthenticatedSession(workspace?.session)) return;
     setSigningOut(true);
     setError(null);
     try {

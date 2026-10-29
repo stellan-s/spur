@@ -49,4 +49,28 @@ describe("Claude skill installation", () => {
     await expect(installClaudeSkill({ targetRoot })).rejects.toThrow(/locally modified/);
     expect((await installClaudeSkill({ targetRoot, force: true })).current).toBe(true);
   });
+
+  it("installs the bundled requirements skill by explicit ID", async () => {
+    const targetRoot = await temporaryRoot();
+    const installed = await installClaudeSkill({
+      skillId: "spur-write-requirements",
+      targetRoot,
+    });
+
+    expect(installed).toMatchObject({
+      id: "spur-write-requirements",
+      installed: true,
+      installed_version: "1.1.0",
+      bundled_version: "1.1.0",
+      current: true,
+      replaced: false,
+      modified_files: [],
+    });
+    expect(await readFile(path.join(installed.target, "SKILL.md"), "utf8"))
+      .toContain("name: spur-write-requirements");
+  });
+
+  it("rejects unsafe skill IDs before resolving bundled paths", async () => {
+    await expect(getClaudeSkillStatus("../outside", await temporaryRoot())).rejects.toThrow();
+  });
 });

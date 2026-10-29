@@ -61,9 +61,12 @@ Install the bundled Claude Code skill:
 
 ```bash
 npx spur skills install claude
+npx spur skills install claude --skill spur-write-requirements
 ```
 
 Connect Claude Code to the intended Spur MCP instance and ask it to model the current committed repository with the installed `spur-model-repository` skill. The workflow pins one immutable commit, writes candidate knowledge with exact evidence and never promotes candidates automatically.
+
+Use the bundled `spur-write-requirements` skill to draft evidence-aware PRDs or technical specifications with selectable acceptance criteria, Definition of Done, delivery sections, diagrams, images, screenshots, and wireframes. It saves an unverified draft in Spur only after explicit approval.
 
 ## MCP
 

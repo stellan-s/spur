@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Spur mark</title>
+  <path
+    d="M45.5 15.5H29.2c-9.1 0-14.7 4.7-14.7 11.3 0 6.8 5.5 10.7 14.7 10.7h5.6c9.3 0 14.7 3.8 14.7 10.7"
+    fill="none"
+    stroke="#305BD5"
+    stroke-width="7"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <circle cx="46" cy="15.5" r="5.5" fill="#305BD5"/>
+  <circle cx="49.5" cy="48.5" r="5.5" fill="#305BD5"/>
+</svg>

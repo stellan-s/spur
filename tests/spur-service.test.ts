@@ -167,8 +167,41 @@ describe("AI-first Spur service", () => {
       expect(result.answering_instructions.join(" ")).toContain("2–4 sentences");
       expect(result.answering_instructions.join(" ")).toContain("expand when the user requests detail");
       expect(result.answering_instructions.join(" ")).toContain("does not prove that a feature is absent");
+      expect(result.answering_instructions.join(" ")).toContain("alternative business phrasing");
     } finally {
       (await service.close());
+    }
+  });
+
+  it("returns more than six direct matches before treating memory as incomplete", async () => {
+    const store = new MemoryStore(":memory:");
+    const service = new SpurService(
+      new GitRepository(path.resolve(process.cwd(), "fixture-repo")),
+      store,
+      new EvidenceTestAdapter(),
+      "none",
+      "Claude Code",
+      process.cwd(),
+      undefined,
+      [],
+      "off",
+    );
+    try {
+      await Promise.all(Array.from({ length: 10 }, (_, index) => store.upsertMemory({
+        kind: "rule",
+        title: `Campaign budget rule ${index + 1}`,
+        statement: `Campaign budgets change according to business rule ${index + 1}.`,
+        state: "accepted",
+        authority: "person",
+        confidence: 1,
+      })));
+
+      const result = await service.prepareHostInvestigation("How do campaign budgets change?");
+
+      expect(result.recalled_memory).toHaveLength(10);
+      expect(result.packet_limits.recalled_memory).toBe(12);
+    } finally {
+      await service.close();
     }
   });
 
@@ -1022,7 +1055,7 @@ describe("code search modes", () => {
   }
   const question = "Why can't a shipping address change after dispatch?";
 
-  it("answers from memory only and logs the gap when code search is off", async () => {
+  it("answers from memory only and waits for a second search before logging a gap", async () => {
     const service = serviceWith("off");
     try {
       const result = await service.prepareHostInvestigation(question);
@@ -1031,7 +1064,8 @@ describe("code search modes", () => {
       await expect(service.prepareHostInvestigation(question, { searchCode: true }))
         .rejects.toThrow(/Code search is off/);
       await expect(service.searchCode("shipping")).rejects.toThrow(/Code search is off/);
-      expect((await service.listKnowledgeGaps())).toMatchObject([{ question, times_asked: 1 }]);
+      expect(result.answering_instructions.join(" ")).toContain("alternative business phrasing");
+      expect(await service.listKnowledgeGaps()).toEqual([]);
     } finally {
       (await service.close());
     }

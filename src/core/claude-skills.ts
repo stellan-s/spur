@@ -9,13 +9,19 @@ import { z } from "zod";
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const bundledSkillsRoot = path.join(packageRoot, "skills");
 
+const skillIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/);
+
 const skillManifestSchema = z.object({
-  id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
+  id: skillIdSchema,
   version: z.string().regex(/^\d+\.\d+\.\d+$/),
   compatible_spur: z.string().min(1),
-  modeling_contract: z.string().min(1),
+  modeling_contract: z.string().min(1).optional(),
+  skill_contract: z.string().min(1).optional(),
   files: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)),
-});
+}).refine(
+  (manifest) => Boolean(manifest.modeling_contract || manifest.skill_contract),
+  "A bundled skill manifest must declare a contract version.",
+);
 
 type SkillManifest = z.infer<typeof skillManifestSchema>;
 
@@ -68,6 +74,7 @@ function sameFiles(left: SkillManifest["files"], right: SkillManifest["files"]):
 }
 
 async function bundledManifest(skillId: string): Promise<{ root: string; manifest: SkillManifest }> {
+  skillIdSchema.parse(skillId);
   const root = path.join(bundledSkillsRoot, skillId);
   const manifest = await readManifest(path.join(root, "manifest.json"));
   if (manifest.id !== skillId) throw new Error(`Bundled skill ${skillId} has manifest id ${manifest.id}.`);

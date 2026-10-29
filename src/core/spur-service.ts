@@ -84,6 +84,9 @@ import {
   type WikiRelatedKind,
 } from "./wiki";
 
+const HOST_RECALLED_MEMORY_LIMIT = 12;
+const HOST_RELATED_MEMORY_LIMIT = 12;
+
 function questionTitle(question: string): string {
   const compact = question.trim().replace(/\s+/g, " ").replace(/[?!.]+$/, "");
   return compact.length <= 88 ? compact : `${compact.slice(0, 85)}…`;
@@ -1029,8 +1032,8 @@ export class SpurService {
         memory_evidence: [],
         repository_evidence: [],
         packet_limits: {
-          recalled_memory: 6,
-          related_memory: 12,
+          recalled_memory: HOST_RECALLED_MEMORY_LIMIT,
+          related_memory: HOST_RELATED_MEMORY_LIMIT,
           relationships: 24,
           memory_evidence: 10,
           repository_evidence: 6,
@@ -1052,7 +1055,9 @@ export class SpurService {
     const withheld = requestsSecurityIssues(trimmed);
     // Memory answers first. Code is searched only when the mode allows it
     // without asking, or after the user agreed (search_code).
-    const initialMatches = withheld ? [] : (await this.searchStoredMemory(trimmed, 12)).slice(0, 6);
+    const initialMatches = withheld
+      ? []
+      : await this.searchStoredMemory(trimmed, HOST_RECALLED_MEMORY_LIMIT);
     const restrictedMatches = initialMatches.filter(isRestrictedMemory);
     const restrictedMatch = await this.questionTargetsRestrictedMemory(
       trimmed,
@@ -1066,9 +1071,6 @@ export class SpurService {
     const searched = !withheld && !restrictedMatch &&
       (this.codeSearch === "on" || (this.codeSearch === "ask" && options.searchCode === true));
     const code = searched ? await this.searchCode(trimmed) : null;
-    if (!withheld && matches.length === 0 && !options.searchCode) {
-      await this.recordKnowledgeGap(trimmed, "No stored memory matched the question.");
-    }
     const candidateRelationships = uniqueById(
       (await Promise.all(matches.map((item) => this.store.listRelationships(item.id)))).flat(),
     ).slice(0, 24);
@@ -1076,7 +1078,9 @@ export class SpurService {
     const relatedIds = unique(
       candidateRelationships.flatMap((relationship) => [relationship.from_id, relationship.to_id]),
     ).filter((id) => !matchIds.has(id));
-    const related = (await Promise.all(relatedIds.slice(0, 12).map((id) => this.getMemory(id))))
+    const related = (await Promise.all(
+      relatedIds.slice(0, HOST_RELATED_MEMORY_LIMIT).map((id) => this.getMemory(id)),
+    ))
       .filter((item): item is MemoryObject => item !== null &&
         !this.isHidden(item) &&
         (this.authorization.restrictedRead || restrictedMatch || !isRestrictedMemory(item)));
@@ -1108,10 +1112,10 @@ export class SpurService {
     const codeInstruction = hasRestrictedMemory
       ? "Do not search the repository or use another source to reconstruct restricted control details."
       : this.codeSearch === "off"
-      ? "Answer from Spur's memory only; code search is turned off. If memory does not answer the question, say that this has not been modelled in Spur yet and call record_knowledge_gap with the question."
+      ? "Answer from Spur's memory only; code search is turned off. If this packet does not answer the question, run search_memory once with a shorter or alternative business phrasing and limit 20 before calling record_knowledge_gap."
       : searched
-      ? "repository_evidence comes from a search of every connected repository's code, not from modelled memory. Prefer memory. When a statement rests only on repository evidence, say it is not yet modelled in Spur. If neither answers the question, say what remains unknown and call record_knowledge_gap."
-      : "Answer from Spur's memory; the code was not searched. If memory does not fully answer the question, say what is missing, call record_knowledge_gap with the question, and offer to search the code of every connected repository. Call investigate again with search_code true only after the user agrees.";
+      ? "repository_evidence comes from a search of every connected repository's code, not from modelled memory. Prefer memory. When a statement rests only on repository evidence, say it is not yet modelled in Spur. If neither answers the question, run search_memory once with a shorter or alternative business phrasing and limit 20 before calling record_knowledge_gap."
+      : "Answer from Spur's memory; the code was not searched. If memory does not fully answer the question, say what is missing, run search_memory once with a shorter or alternative business phrasing and limit 20, and offer to search the code of every connected repository. Call investigate again with search_code true only after the user agrees. Call record_knowledge_gap only if the second memory search also fails.";
 
     return {
       question: trimmed,
@@ -1127,8 +1131,8 @@ export class SpurService {
       memory_evidence: hasRestrictedMemory ? [] : memoryEvidence,
       repository_evidence: hasRestrictedMemory ? [] : code?.candidates.slice(0, 6) ?? [],
       packet_limits: {
-        recalled_memory: 6,
-        related_memory: 12,
+        recalled_memory: HOST_RECALLED_MEMORY_LIMIT,
+        related_memory: HOST_RELATED_MEMORY_LIMIT,
         relationships: 24,
         memory_evidence: 10,
         repository_evidence: 6,
@@ -1144,7 +1148,7 @@ export class SpurService {
         "Treat aliases only as retrieval vocabulary. A proposed or user-origin alias is a user-generated signal, not evidence for the capability; say that plainly when the alias matters to the answer. Never use rejected aliases.",
         ...(hasRestrictedMemory ? [`Say only that a security control exists and its details are restricted. Ask ${this.securityContact || "the security owner"}. Do not infer, guess, or describe how it works. Do not say or imply whether it is complete, partial, effective or has gaps, and do not draw conclusions from how many restricted records matched. Do not offer to review or harden it. Do not use repository evidence to reconstruct the restricted details.`] : []),
         ...(this.applicationNaming ? [`Use ${this.applicationNaming.canonicalName} as the product name in your own answer. Aliases such as ${this.applicationNaming.aliases.join(", ")} are search terms, not preferred display names. Do not alter quoted source evidence or technical identifiers.`] : []),
-        "This packet is a ranked, limited search result, not an inventory of everything Spur knows. An empty or weak match does not prove that a feature is absent or has never been modeled. Say what you could not verify from this packet, not that Spur does not know it.",
+        "This packet is a ranked, limited search result, not an inventory of everything Spur knows. An empty or weak match does not prove that a feature is absent or has never been modeled. Say what you could not verify from this packet, not that Spur does not know it. Never call record_knowledge_gap from this first packet alone; retry memory once with a distinct shorter or alternative business phrasing.",
         "Use repository evidence and exact stored excerpts to verify claims, but keep technical citations separate from the main answer unless the user asks for them.",
         "Keep observed behavior, documented rationale, and human-verified rules separate.",
         codeInstruction,

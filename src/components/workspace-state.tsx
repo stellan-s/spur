@@ -4,13 +4,21 @@ import { createContext, useContext, useState, type Dispatch, type ReactNode, typ
 
 import type { Workspace } from "@/core/memory-types";
 
+export type WorkspaceSession = {
+  auth_mode: "none" | "google" | "otp";
+  tenancy?: "single" | "multi";
+  display_name: string;
+  email: string;
+};
+
+export function isAuthenticatedSession(
+  session: WorkspaceSession | undefined,
+): session is WorkspaceSession & { auth_mode: "google" | "otp" } {
+  return session?.auth_mode === "google" || session?.auth_mode === "otp";
+}
+
 export type WorkspaceView = Workspace & {
-  session?: {
-    auth_mode: "none" | "google";
-    tenancy?: "single" | "multi";
-    display_name: string;
-    email: string;
-  };
+  session?: WorkspaceSession;
 };
 
 type WorkspaceState = {

@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 
+import { publicOrigin } from "@/core/public-url";
+
 import "@xyflow/react/dist/style.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(publicOrigin() ?? "http://localhost:3000"),
   title: "Spur — Organizational memory for AI",
   description: "Investigate, retain, and query evidence-backed organizational knowledge.",
 };

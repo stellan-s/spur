@@ -122,6 +122,16 @@ const editMemoryToolInputSchema = editMemoryBaseSchema
   .omit({ action: true })
   .extend({ id: z.string().min(1) });
 
+export const recordKnowledgeGapToolInputSchema = z.object({
+  question: z.string().min(5).max(500),
+  reason: z.string().min(2).max(500),
+  queries_tried: z.array(z.string().min(2).max(500)).min(2).max(5).refine(
+    (queries) => new Set(queries.map((query) =>
+      query.trim().replace(/\s+/g, " ").toLocaleLowerCase())).size >= 2,
+    "Provide at least two distinct memory searches.",
+  ),
+});
+
 const confirmedMemoryMutationSchema = z.object({
   id: z.string().min(1),
   confirmation: z
@@ -802,11 +812,8 @@ export async function createSpurMcpServer(options: {
     {
       title: "Record a knowledge gap",
       description:
-        "Record a question Spur's memory could not answer, so it can be modelled later. Repeated questions are counted, not duplicated. Logging an unanswered question again reopens a resolved gap and preserves its resolution history.",
-      inputSchema: z.object({
-        question: z.string().min(5).max(500),
-        reason: z.string().min(2).max(500),
-      }),
+        "Record a question Spur's memory could not answer after at least two distinct searches: the user's phrasing and a shorter or alternative business phrasing. Supply both exact searches in queries_tried. A short result list is not proof of a gap. Repeated questions are counted, not duplicated. Logging an unanswered question again reopens a resolved gap and preserves its resolution history.",
+      inputSchema: recordKnowledgeGapToolInputSchema,
       outputSchema: knowledgeGapSchema,
       annotations: {
         readOnlyHint: false,
@@ -1144,7 +1151,7 @@ export async function createSpurMcpServer(options: {
 
     server.registerTool("create_product_document", {
       title: "Create a PRD or specification",
-      description: "Save a draft product requirements document (PRD) or technical specification as unverified memory. Supply Markdown content and related memory IDs. Do not invent evidence or treat proposed requirements as implemented behaviour. Maximum content length is 4,000 characters.",
+      description: "Save a draft product requirements document (PRD) or technical specification as unverified memory. Supply Markdown content with the sections and visuals selected for this document and related memory IDs. Acceptance criteria and Definition of Done are optional and distinct. Diagrams and images must state whether they are current, proposed, or illustrative; local image paths are not uploaded to Spur. Do not invent evidence or treat proposed requirements as implemented behaviour. Maximum content length is 12,000 characters.",
       inputSchema: productDocumentInputSchema,
       outputSchema: memoryObjectSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },

@@ -1,0 +1,12 @@
+{
+  "id": "spur-write-requirements",
+  "version": "1.1.0",
+  "compatible_spur": ">=0.2.0 <0.3.0",
+  "skill_contract": "1",
+  "files": {
+    "SKILL.md": "de00b6879acfa588e0d53fd13ac4cc3e09e330478cc5e60c15aac804423fd117",
+    "references/workflow.md": "7dce730cc12ef37d1e5ec582023694d4f65e65ad8d92385b402231b1bf23c257",
+    "references/sections.md": "03002373a6f0cfa6bda42feaff8e802eb8276dd4809a15e6dbbc8d76edbbe453",
+    "references/visuals.md": "0817d30603e9ffb723335703b7a31a66cdd8563bd1f5b01d9ed06db3a73d4e81"
+  }
+}

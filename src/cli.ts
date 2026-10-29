@@ -36,8 +36,10 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
   if (command === "skills") {
     const [action, platformOrOption] = rest;
     const target = option(rest, "--target");
+    const skillId = option(rest, "--skill") ?? "spur-model-repository";
     if (action === "install" && platformOrOption === "claude") {
       console.log(JSON.stringify(await installClaudeSkill({
+        skillId,
         targetRoot: target,
         force: rest.includes("--force"),
       })));
@@ -46,12 +48,12 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
     if (action === "status" && (!platformOrOption || platformOrOption === "claude" || platformOrOption.startsWith("--"))) {
       console.log(JSON.stringify({
         event: "claude_skill_status",
-        ...await getClaudeSkillStatus("spur-model-repository", target),
+        ...await getClaudeSkillStatus(skillId, target),
       }));
       return;
     }
     throw new Error(
-      "Usage: spur skills install claude [--target <skills-directory>] [--force] | spur skills status [claude] [--target <skills-directory>]",
+      "Usage: spur skills install claude [--skill <skill-id>] [--target <skills-directory>] [--force] | spur skills status [claude] [--skill <skill-id>] [--target <skills-directory>]",
     );
   }
   if (command === "migrate") {
