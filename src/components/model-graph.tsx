@@ -52,7 +52,7 @@ import {
   type LayoutLink,
   type RelationshipRoute,
 } from "@/lib/model-graph-relations";
-import { isMapThemeId, MAP_THEME_STORAGE_KEY, modelKindColor, type MapThemeId } from "@/lib/model-map-theme";
+import { modelKindColor, type MapThemeId } from "@/lib/model-map-theme";
 import { networkRelationshipRoutes, type MapPresentation } from "@/lib/model-network";
 import { MAP_OVERVIEW_LIMIT } from "@/lib/model-map";
 import { cn } from "@/lib/utils";
@@ -103,7 +103,7 @@ function ArchitectureNodeCard({ data, selected }: NodeProps<ArchitectureNode>) {
   return (
     <div
       className={cn(
-        "h-[92px] w-[232px] rounded-lg border bg-card px-4 py-3 shadow-sm transition-[border-color,box-shadow,opacity,transform] duration-200",
+        "h-[92px] w-[232px] rounded-lg border bg-card px-4 py-3 text-card-foreground shadow-sm transition-[border-color,box-shadow,opacity,transform] duration-200",
         selected ? "border-primary shadow-md ring-2 ring-primary/10" : "hover:border-primary/45 hover:shadow-md",
         muted && "opacity-45",
       )}
@@ -136,7 +136,7 @@ function ArchitectureNodeCard({ data, selected }: NodeProps<ArchitectureNode>) {
           aria-hidden="true"
         />
       </div>
-      <p className="mt-1 line-clamp-2 text-[13px] font-medium leading-[18px]">{item.title}</p>
+      <p className="mt-1 line-clamp-2 text-[13px] font-medium leading-[18px] text-card-foreground">{item.title}</p>
       <div className="mt-1 flex items-center justify-between gap-2 text-[10px] tabular-nums text-muted-foreground">
         <span>{connectionCount} {connectionCount === 1 ? "connection" : "connections"}</span>
         {onExplore ? (
@@ -546,6 +546,7 @@ export function ModelGraph({
   relationships,
   focusableObjects,
   searchPlaceholder,
+  theme,
   presentation,
   onPresentationChange,
   dense = false,
@@ -566,6 +567,7 @@ export function ModelGraph({
   relationships: MemoryRelationship[];
   focusableObjects: MemoryObject[];
   searchPlaceholder: string;
+  theme: MapThemeId;
   presentation: MapPresentation;
   onPresentationChange: (presentation: MapPresentation) => void;
   dense?: boolean;
@@ -583,7 +585,6 @@ export function ModelGraph({
   onClearSelection: () => void;
 }) {
   const [layout, setLayout] = useState<LayoutMode>("LR");
-  const [mapTheme, setMapTheme] = useState<MapThemeId>("auto");
   const [focusQuery, setFocusQuery] = useState("");
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const compactView = Boolean(focusTitle) || objects.length <= MAP_OVERVIEW_LIMIT;
@@ -674,13 +675,6 @@ export function ModelGraph({
   useEffect(() => stopSoftForce, [stopSoftForce]);
 
   useEffect(() => {
-    const storedTheme = window.localStorage.getItem(MAP_THEME_STORAGE_KEY);
-    if (!isMapThemeId(storedTheme)) return;
-    const frame = window.requestAnimationFrame(() => setMapTheme(storedTheme));
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-
-  useEffect(() => {
     stopSoftForce();
     setNodes(initial.nodes);
     setEdges(initial.edges);
@@ -738,11 +732,6 @@ export function ModelGraph({
 
   const applyLayout = useCallback((nextLayout: LayoutMode) => {
     setLayout(nextLayout);
-  }, []);
-
-  const applyMapTheme = useCallback((nextTheme: MapThemeId) => {
-    setMapTheme(nextTheme);
-    window.localStorage.setItem(MAP_THEME_STORAGE_KEY, nextTheme);
   }, []);
 
   const applySoftForce = useCallback((draggedNode: ArchitectureNode) => {
@@ -873,7 +862,7 @@ export function ModelGraph({
   return (
     <div
       className={cn(
-        "flex flex-col overflow-hidden bg-card",
+        "flex flex-col overflow-hidden bg-card text-card-foreground",
         expanded
           ? "fixed inset-0 z-40 h-dvh w-dvw"
           : "relative h-[calc(100svh-230px)] min-h-[720px] max-h-[1080px] rounded-xl border shadow-sm",
@@ -881,7 +870,7 @@ export function ModelGraph({
       data-testid="model-map"
       data-expanded={expanded}
       data-presentation={presentation}
-      data-map-theme={mapTheme}
+      data-map-theme={theme}
     >
       <ModelMapToolbar
         navigation={navigation}
@@ -896,8 +885,6 @@ export function ModelGraph({
         onQueryChange={setFocusQuery}
         results={focusResults}
         onFocusResult={focusOnResult}
-        theme={mapTheme}
-        onThemeChange={applyMapTheme}
         viewportReady={Boolean(instance)}
         onZoomIn={() => { void instance?.zoomIn(); }}
         onZoomOut={() => { void instance?.zoomOut(); }}

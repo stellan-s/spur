@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { ModelGraph } from "@/components/model-graph";
+import { ModelMapThemeSelect } from "@/components/model-map-theme-select";
 import { ModelMapToolbar } from "@/components/model-map-toolbar";
 
 function toolbarProps() {
@@ -11,7 +12,6 @@ function toolbarProps() {
     onToggleExpanded: vi.fn(), presentation: "network" as const, onPresentationChange: vi.fn(),
     layout: "balanced" as const, onLayoutChange: vi.fn(), searchPlaceholder: "Search connected entities",
     query: "", onQueryChange: vi.fn(), results: [{ id: "project", title: "Project" }], onFocusResult: vi.fn(),
-    theme: "auto" as const, onThemeChange: vi.fn(),
     viewportReady: true, onZoomIn: vi.fn(), onZoomOut: vi.fn(), onFitView: vi.fn(),
   };
 }
@@ -26,7 +26,7 @@ function findControl(node: ReactNode, label: string): Record<string, unknown> | 
 describe("map top toolbar", () => {
   it("groups navigation, display, layout, search and zoom in one responsive surface", () => {
     const html = renderToStaticMarkup(createElement(ModelMapToolbar, toolbarProps()));
-    for (const label of ["Map controls", "Node display", "Map layout", "Map theme", "Map zoom", "Search connected entities"]) {
+    for (const label of ["Map controls", "Node display", "Map layout", "Map zoom", "Search connected entities"]) {
       expect(html).toContain(`aria-label="${label}"`);
     }
     expect(html).toContain("flex-wrap items-center gap-2");
@@ -35,16 +35,22 @@ describe("map top toolbar", () => {
     expect(html).not.toContain("position:absolute");
   });
 
-  it("offers map-only themes and reports the selected palette", () => {
+  it("keeps the theme selector outside the graph toolbar", () => {
     const props = toolbarProps();
     const tree = ModelMapToolbar(props);
-    const select = findControl(tree, "Map theme")!;
-    expect(renderToStaticMarkup(tree)).toContain("GitHub Light");
-    expect(renderToStaticMarkup(tree)).toContain("GitHub Dark");
-    expect(renderToStaticMarkup(tree)).toContain("Nord");
-    expect(renderToStaticMarkup(tree)).toContain("Dracula");
-    (select.onChange as (event: { target: { value: string } }) => void)({ target: { value: "dracula" } });
-    expect(props.onThemeChange).toHaveBeenCalledWith("dracula");
+    expect(findControl(tree, "Map theme")).toBeUndefined();
+
+    const onChange = vi.fn();
+    const selector = ModelMapThemeSelect({ value: "auto", onChange });
+    const select = findControl(selector, "Map theme")!;
+    const html = renderToStaticMarkup(selector);
+    expect(html).toContain("Solarized Dark");
+    expect(html).toContain("Gruvbox Dark");
+    expect(html).toContain("Tokyo Night");
+    expect(html).toContain("Phosphor");
+    expect(html).toContain("Amber Terminal");
+    (select.onChange as (event: { target: { value: string } }) => void)({ target: { value: "tokyo-night" } });
+    expect(onChange).toHaveBeenCalledWith("tokyo-night");
   });
 
   it("keeps zoom and layout callbacks working after moving out of the canvas", () => {
@@ -129,7 +135,7 @@ describe("map top toolbar", () => {
   it("places the toolbar outside React Flow so wrapping cannot cover the map", () => {
     const html = renderToStaticMarkup(createElement(ModelGraph, {
       objects: [], relationships: [], focusableObjects: [], searchPlaceholder: "Search entities",
-      presentation: "network", onPresentationChange: vi.fn(), connectionCounts: new Map(),
+      theme: "auto", presentation: "network", onPresentationChange: vi.fn(), connectionCounts: new Map(),
       hiddenConnectionCounts: new Map(), navigation: createElement("nav", null, "Overview"), summary: "Empty map",
       onFocusNode: vi.fn(), selectedNodeId: null, selectedRelationshipId: null,
       onSelectNode: vi.fn(), onSelectRelationship: vi.fn(), onClearSelection: vi.fn(),

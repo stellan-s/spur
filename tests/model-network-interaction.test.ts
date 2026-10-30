@@ -27,7 +27,7 @@ function renderGraph(presentation: MapPresentation = "network", focusedNodeId?: 
   const onSelectNode = vi.fn();
   const html = renderToStaticMarkup(createElement(ModelGraph, {
     objects, relationships: [], focusableObjects: objects, searchPlaceholder: "Search entities",
-    presentation, onPresentationChange: vi.fn(), focusedNodeId,
+    theme: "auto", presentation, onPresentationChange: vi.fn(), focusedNodeId,
     connectionCounts: new Map([["A", 1], ["B", 1]]), hiddenConnectionCounts: new Map(),
     navigation: createElement(ModelMapExplorer, {
       trail: [{ id: "previous", title: "Previous object" }], focus: objects[0],
@@ -98,6 +98,13 @@ describe("network exploration", () => {
     flow.onNodeDoubleClick?.({} as MouseEvent, flow.nodes![1]);
     expect(onFocusNode).toHaveBeenCalledWith("B");
     expect(flow.nodes![1].domAttributes).toBeUndefined();
+  });
+
+  it("uses card foreground colours for card titles in both presentations", () => {
+    for (const presentation of ["network", "cards"] as const) {
+      const { html } = renderGraph(presentation);
+      expect(html).toContain("text-card-foreground");
+    }
   });
 
   it.each(["network", "cards"] as const)("renders the trail and neighbour paging in %s", (presentation) => {

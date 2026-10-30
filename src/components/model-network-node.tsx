@@ -36,7 +36,7 @@ export function ModelNetworkNode({
         style={{ left: NODE_WIDTH / 2 - radius, top: NETWORK_DOT_Y - radius, width: radius * 2, height: radius * 2, backgroundColor: modelKindColor(item.kind) }}
       />
       <div className="absolute inset-x-2 top-[46px]">
-        <p className={cn("mx-auto line-clamp-2 w-fit max-w-full rounded-sm bg-card/95 px-1.5 text-[13px] leading-4 text-foreground", selected ? "font-semibold" : "font-medium")}>{item.title}</p>
+        <p className={cn("mx-auto line-clamp-2 w-fit max-w-full rounded-sm bg-card/95 px-1.5 text-[13px] leading-4 text-card-foreground", selected ? "font-semibold" : "font-medium")}>{item.title}</p>
         <div className="flex items-center justify-center gap-1 text-[11px] leading-[14px]">
           {focused ? <span className="rounded-sm bg-card/95 px-1.5 text-muted-foreground">Current focus</span> : onExplore ? (
             <button

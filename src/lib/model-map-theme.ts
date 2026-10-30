@@ -8,6 +8,15 @@ export const MAP_THEMES = [
   { id: "github-dark", label: "GitHub Dark" },
   { id: "nord", label: "Nord" },
   { id: "dracula", label: "Dracula" },
+  { id: "solarized-light", label: "Solarized Light" },
+  { id: "solarized-dark", label: "Solarized Dark" },
+  { id: "gruvbox-light", label: "Gruvbox Light" },
+  { id: "gruvbox-dark", label: "Gruvbox Dark" },
+  { id: "tokyo-night", label: "Tokyo Night" },
+  { id: "catppuccin-mocha", label: "Catppuccin Mocha" },
+  { id: "rose-pine", label: "Rosé Pine" },
+  { id: "phosphor", label: "Phosphor" },
+  { id: "amber-terminal", label: "Amber Terminal" },
 ] as const;
 
 export type MapThemeId = typeof MAP_THEMES[number]["id"];

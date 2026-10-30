@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Bar, BarChart, CartesianGrid, LabelList, XAxis, YAxis } from "recharts";
@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/table";
 import { ModelGraph } from "@/components/model-graph";
 import { ModelMapExplorer } from "@/components/model-map-explorer";
+import { ModelMapThemeSelect } from "@/components/model-map-theme-select";
 import { entityDefinitionSchema } from "@/core/memory-types";
 import type {
   MemoryKind,
@@ -54,6 +55,7 @@ import type {
 import { cn } from "@/lib/utils";
 import { MAP_OVERVIEW_LIMIT, modelData, projectModelMap } from "@/lib/model-map";
 import { navigateModelMap, readMapTrail, type MapMode } from "@/lib/model-map-navigation";
+import { isMapThemeId, MAP_THEME_STORAGE_KEY, type MapThemeId } from "@/lib/model-map-theme";
 import type { MapPresentation } from "@/lib/model-network";
 
 export const KIND_LABELS: Record<MemoryKind, string> = {
@@ -250,6 +252,7 @@ export function ModelOverview({
 }) {
   const searchParams = useSearchParams();
   const basePath = `/o/${workspace.organization.slug}`;
+  const [mapTheme, setMapTheme] = useState<MapThemeId>("auto");
   const { objects, relationships } = useMemo(() => modelData(workspace), [workspace]);
   const mapMode: MapMode = searchParams.get("map") === "architecture" ? "architecture" : "entities";
   const presentation: MapPresentation = searchParams.get("style") === "cards" ? "cards" : "network";
@@ -310,6 +313,18 @@ export function ModelOverview({
   const averageConfidence = objects.length > 0
     ? Math.round((objects.reduce((sum, item) => sum + item.confidence, 0) / objects.length) * 100)
     : 0;
+
+  useEffect(() => {
+    const storedTheme = window.localStorage.getItem(MAP_THEME_STORAGE_KEY);
+    if (!isMapThemeId(storedTheme)) return;
+    const frame = window.requestAnimationFrame(() => setMapTheme(storedTheme));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  function changeMapTheme(theme: MapThemeId) {
+    setMapTheme(theme);
+    window.localStorage.setItem(MAP_THEME_STORAGE_KEY, theme);
+  }
 
   function changeMapMode(mode: MapMode) {
     navigateModelMap({ type: "mode", mode });
@@ -398,6 +413,7 @@ export function ModelOverview({
                 </p>
               </div>
               <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                <ModelMapThemeSelect value={mapTheme} onChange={changeMapTheme} />
                 <div className="inline-flex items-center gap-1 rounded-lg border bg-muted/40 p-1" role="group" aria-label="Map view">
                   {(["entities", "architecture"] as const).map((value) => (
                     <Button key={value} type="button" size="sm" variant="ghost" aria-pressed={mapMode === value} onClick={() => changeMapMode(value)}
@@ -420,6 +436,7 @@ export function ModelOverview({
                 relationships={visibleRelationships}
                 focusableObjects={graphObjects}
                 searchPlaceholder={mapMode === "entities" ? "Search connected entities" : "Search connected architecture objects"}
+                theme={mapTheme}
                 connectionCounts={projection.connectionCounts}
                 hiddenConnectionCounts={projection.hiddenConnectionCounts}
                 summary={mapSummary}
