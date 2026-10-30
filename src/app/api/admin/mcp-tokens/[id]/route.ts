@@ -16,10 +16,10 @@ export async function DELETE(request: Request, context: RouteContext) {
     const { config, principal } = await authorizeApiRequest(request);
     access = new AccessStore(config.databaseUrl);
     const { id } = await context.params;
-    await access.revokeOAuthTokenById(config.organization.slug, id, principal.userId);
+    await access.revokeOAuthGrantById(config.organization.slug, id, principal.userId);
     return new Response(null, { status: 204 });
   } catch (error) {
-    const message = publicErrorMessage(error, "The MCP token could not be revoked.");
+    const message = publicErrorMessage(error, "The MCP connection could not be revoked.");
     return NextResponse.json({ error: message }, { status: error instanceof SpurError ? error.status : 500 });
   } finally {
     await access?.close();

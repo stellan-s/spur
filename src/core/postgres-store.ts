@@ -930,6 +930,9 @@ export class PostgresMemoryStore {
       if (existing.status === status) throw new InputError(`Knowledge gap is already ${status}. Refresh and try again.`);
       const memoryIds = input.action === "resolve" ? [...new Set(input.memory_ids)] : [];
       if (input.action === "resolve") {
+        if (input.confirmation !== id) {
+          throw new InputError("Confirmation must match the knowledge gap ID exactly.");
+        }
         const rows = await this.query(
           "SELECT * FROM memory_objects WHERE organization_id = $1 AND id = ANY($2::text[]) ORDER BY id FOR SHARE",
           [this.organizationId, memoryIds], client,
@@ -939,6 +942,34 @@ export class PostgresMemoryStore {
           item.metadata.deleted_at || !["accepted", "candidate"].includes(item.state) ||
           isRestrictedMemory(item) || isSecurityIssueMemory(item))) {
           throw new InputError("Supporting knowledge must be active, non-restricted catalog items in this organization.");
+        }
+        const evidenceIds = [...new Set(items.flatMap((item) => item.evidence_ids))];
+        const evidenceRows = evidenceIds.length > 0
+          ? await this.query<{ id: string; created_at: string }>(
+            "SELECT id, created_at FROM evidence WHERE organization_id = $1 AND id = ANY($2::text[])",
+            [this.organizationId, evidenceIds], client,
+          )
+          : [];
+        const evidenceById = new Map(evidenceRows.map((row) => [row.id, row]));
+        for (const item of items) {
+          const evidence = item.evidence_ids.flatMap((evidenceId) => {
+            const row = evidenceById.get(evidenceId);
+            return row ? [row] : [];
+          });
+          if (item.metadata.evidence_status !== "verified" || evidence.length === 0 ||
+              evidence.length !== item.evidence_ids.length) {
+            throw new InputError(
+              `Supporting knowledge '${item.title}' has no complete verified evidence and cannot resolve this gap.`,
+            );
+          }
+          const newestEvidence = Math.max(...evidence.map((row) => new Date(row.created_at).getTime()));
+          const contentEditedAt = item.metadata.last_content_edited_at ?? item.metadata.last_edited_at;
+          if (typeof contentEditedAt === "string" &&
+              new Date(contentEditedAt).getTime() > newestEvidence) {
+            throw new InputError(
+              `Supporting knowledge '${item.title}' changed after its newest verified evidence and cannot resolve this gap.`,
+            );
+          }
         }
       }
       const event = {

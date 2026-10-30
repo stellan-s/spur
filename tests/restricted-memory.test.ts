@@ -195,7 +195,7 @@ describe("restricted security controls", () => {
         action: "edit",
         kind: "control",
         title: "Updated sensitive shipping control",
-        statement: "A different sensitive shipping implementation detail.",
+        statement: raw.statement,
         subjects: ["sensitive shipping"],
       }));
       expect(edited).toMatchObject(expected);

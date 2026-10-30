@@ -136,6 +136,7 @@ export const API_ROUTE_PERMISSIONS = {
   "PATCH /api/memory/:id/aliases": "memory.promote",
   "GET /api/memory/:id": "memory.read",
   "PATCH /api/memory/:id": "authenticated",
+  "PATCH /api/product-documents/:id": "authenticated",
   "GET /api/memory": "memory.read",
   "POST /api/memory": "decisions.record",
   "GET /api/organizations": "public",
@@ -188,7 +189,9 @@ export const PAGE_ROUTE_PERMISSIONS = {
   "/o/:organization/model/catalog/:id": "memory.read",
   "/o/:organization/model/health": "memory.read",
   "/o/:organization/model/gaps": "knowledge_gaps.read",
-  "/o/:organization/sources": "sources.manage",
+  "/o/:organization/documents": "memory.read",
+  "/o/:organization/documents/:id": "memory.read",
+  "/o/:organization/sources": "memory.read",
   "/o/:organization/isms/controls": "isms.read",
   "/o/:organization/wiki": "wiki.read",
   "/o/:organization/wiki/:id": "wiki.read",
@@ -224,6 +227,7 @@ export const API_ROUTE_FEATURES = {
   "PATCH /api/memory/:id/aliases": [],
   "GET /api/memory/:id": [],
   "PATCH /api/memory/:id": ["modelling_writes"],
+  "PATCH /api/product-documents/:id": ["modelling_writes"],
   "GET /api/memory": [],
   "POST /api/memory": [],
   "GET /api/organizations": [],
@@ -276,6 +280,8 @@ export const PAGE_ROUTE_FEATURES = {
   "/o/:organization/model/catalog/:id": [],
   "/o/:organization/model/health": [],
   "/o/:organization/model/gaps": ["knowledge_gaps"],
+  "/o/:organization/documents": [],
+  "/o/:organization/documents/:id": [],
   "/o/:organization/sources": [],
   "/o/:organization/isms/controls": ["isms"],
   "/o/:organization/wiki": ["wiki"],
@@ -329,6 +335,7 @@ export function normalizeApiPath(pathname: string): string {
     .replace(/^\/api\/memory\/[^/]+\/merge$/, "/api/memory/:id/merge")
     .replace(/^\/api\/memory\/[^/]+\/aliases$/, "/api/memory/:id/aliases")
     .replace(/^\/api\/memory\/[^/]+$/, "/api/memory/:id")
+    .replace(/^\/api\/product-documents\/[^/]+$/, "/api/product-documents/:id")
     .replace(/^\/api\/admin\/access-requests\/[^/]+$/, "/api/admin/access-requests/:id")
     .replace(/^\/api\/admin\/roles\/[^/]+$/, "/api/admin/roles/:id")
     .replace(/^\/api\/admin\/users\/[^/]+$/, "/api/admin/users/:id")
@@ -353,6 +360,7 @@ export function normalizePagePath(pathname: string): string {
   return pathname
     .replace(/^\/model\/catalog\/[^/]+$/, "/model/catalog/:id")
     .replace(/^\/o\/[^/]+\/model\/catalog\/[^/]+$/, "/o/:organization/model/catalog/:id")
+    .replace(/^\/o\/[^/]+\/documents\/[^/]+$/, "/o/:organization/documents/:id")
     .replace(/^\/o\/[^/]+\/wiki\/[^/]+$/, "/o/:organization/wiki/:id")
     .replace(/^\/o\/[^/]+\//, "/o/:organization/");
 }

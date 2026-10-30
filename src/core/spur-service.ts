@@ -759,6 +759,15 @@ export class SpurService {
     const parsed = editMemoryInputSchema.parse(input);
     const current = await this.store.getMemory(id);
     if (!current || current.metadata.deleted_at) throw new NotFoundError("Memory object was not found.");
+    if (parsed.statement !== current.statement && current.evidence_ids.length > 0) {
+      const evidence = await Promise.all(current.evidence_ids.map((evidenceId) =>
+        this.store.getEvidence(evidenceId)));
+      if (evidence.some((item) => item && ["code", "test"].includes(item.kind))) {
+        throw new InputError(
+          "A statement backed by code or test evidence cannot be edited. Model the revised statement with newly verified evidence.",
+        );
+      }
+    }
     if ((isRestrictedMemory(current) || parsed.sensitivity === "restricted") &&
         !this.authorization.restrictedWrite) {
       throw new AuthorizationError("Restricted knowledge requires restricted.write.");
@@ -767,6 +776,12 @@ export class SpurService {
       throw new InputError("The connected application is managed from Sources and cannot be edited here.");
     }
     const timestamp = new Date().toISOString();
+    const nextEntityDefinition = parsed.kind === "entity" ? parsed.entity_definition : undefined;
+    const contentChanged = parsed.kind !== current.kind ||
+      parsed.title !== current.title ||
+      parsed.statement !== current.statement ||
+      JSON.stringify(parsed.subjects) !== JSON.stringify(current.subjects) ||
+      JSON.stringify(nextEntityDefinition) !== JSON.stringify(current.metadata.entity_definition);
     const updated = await this.store.updateMemory(id, {
       kind: parsed.kind,
       title: displayBusinessName(parsed.title, this.applicationNaming),
@@ -775,13 +790,15 @@ export class SpurService {
       metadata: {
         ...current.metadata,
         ...(parsed.kind === "entity"
-          ? { entity_definition: parsed.entity_definition }
+          ? { entity_definition: nextEntityDefinition }
           : { entity_definition: undefined }),
         ...(parsed.sensitivity ? { sensitivity: parsed.sensitivity } : {}),
         ...(parsed.owner ? { owner: parsed.owner } : {}),
         ...(parsed.steward ? { steward: parsed.steward } : {}),
-        last_edited_at: timestamp,
         last_edited_by: this.actor,
+        ...(contentChanged
+          ? { last_edited_at: timestamp, last_content_edited_at: timestamp }
+          : { last_administrative_edited_at: timestamp, last_administrative_edited_by: this.actor }),
       },
     });
     if (!updated) throw new NotFoundError("Memory object was not found.");
@@ -1267,7 +1284,10 @@ export class SpurService {
     ));
     const updated = await this.store.appendEvidence(parsed.memory_id, evidenceIds, source.id);
     if (!updated) throw new NotFoundError(`Not found: ${parsed.memory_id}`);
-    return this.displayMemory(updated);
+    const verified = await this.store.updateMemory(updated.id, {
+      metadata: { ...updated.metadata, evidence_status: "verified" },
+    });
+    return this.displayMemory(verified ?? updated);
   }
 
   private async configuredRepositories(): Promise<SourceProvider[]> {
@@ -1709,7 +1729,7 @@ export class SpurService {
         throw new InputError("A related object is unavailable.");
       }
     }
-    const metadata = {
+    const metadata: Record<string, unknown> = {
       ...current?.metadata,
       document_type: parsed.document_type,
       related_ids: parsed.related_ids,
@@ -1717,8 +1737,20 @@ export class SpurService {
       last_edited_by: this.actor,
       last_edited_at: new Date().toISOString(),
     };
+    if (current) {
+      delete metadata.promoted_at;
+      delete metadata.promoted_by;
+      delete metadata.epistemic_status;
+    }
     const document = current
-      ? await this.store.updateMemory(current.id, { title: parsed.title, statement: parsed.content, metadata })
+      ? await this.store.updateMemory(current.id, {
+          title: parsed.title,
+          statement: parsed.content,
+          state: "candidate",
+          authority: "ai_inference",
+          confidence: 0,
+          metadata,
+        })
       : await this.store.upsertMemory({ kind: "observation", title: parsed.title, statement: parsed.content, sourceVersion: `product-document:${parsed.document_type}:${parsed.title}`, state: "candidate", authority: "ai_inference", confidence: 0, subjects: [], actor: this.actor, metadata });
     if (!document) throw new NotFoundError("Product document was not found.");
     return this.displayMemory(document);

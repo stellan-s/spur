@@ -6,6 +6,7 @@ export const knowledgeGapFilterSchema = z.enum(["open", "resolved", "all"]);
 export const resolveKnowledgeGapInputSchema = z.object({
   note: z.string().trim().min(5).max(2000),
   memory_ids: z.array(z.string().trim().min(1)).min(1).max(20),
+  confirmation: z.string().trim().min(1),
 });
 
 export const reopenKnowledgeGapInputSchema = z.object({

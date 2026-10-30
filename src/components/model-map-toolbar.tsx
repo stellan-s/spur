@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
-import { Check, Columns3, LayoutGrid, Maximize2, Minimize2, Minus, Plus, Rows3, Scan, Search } from "lucide-react";
+import { Check, Columns3, LayoutGrid, Maximize2, Minimize2, Minus, Palette, Plus, Rows3, Scan, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MAP_THEMES, type MapThemeId } from "@/lib/model-map-theme";
 import type { MapPresentation } from "@/lib/model-network";
 
 export type LayoutMode = "balanced" | "LR" | "TB";
@@ -10,6 +11,7 @@ export type LayoutMode = "balanced" | "LR" | "TB";
 export function ModelMapToolbar({
   navigation, expanded, onToggleExpanded, presentation, onPresentationChange,
   layout, onLayoutChange, searchPlaceholder, query, onQueryChange, results, onFocusResult,
+  theme, onThemeChange,
   viewportReady, onZoomIn, onZoomOut, onFitView,
 }: {
   navigation: ReactNode;
@@ -24,6 +26,8 @@ export function ModelMapToolbar({
   onQueryChange: (query: string) => void;
   results: { id: string; title: string }[];
   onFocusResult: (id: string) => void;
+  theme: MapThemeId;
+  onThemeChange: (theme: MapThemeId) => void;
   viewportReady: boolean;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -86,6 +90,17 @@ export function ModelMapToolbar({
               )) : <p className="px-2.5 py-2 text-xs text-muted-foreground">No matching connected nodes</p>}
             </div>
           ) : null}
+        </div>
+        <div className="relative shrink-0">
+          <Palette className="pointer-events-none absolute left-2.5 top-1/2 z-10 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <select
+            aria-label="Map theme"
+            value={theme}
+            onChange={(event) => onThemeChange(event.target.value as MapThemeId)}
+            className="h-9 min-w-28 rounded-md border bg-background py-1 pl-8 text-xs text-foreground shadow-none outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            {MAP_THEMES.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+          </select>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-0.5" role="group" aria-label="Map zoom">
           <Button type="button" variant="ghost" size="icon" className="size-9" disabled={!viewportReady}

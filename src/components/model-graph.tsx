@@ -52,7 +52,8 @@ import {
   type LayoutLink,
   type RelationshipRoute,
 } from "@/lib/model-graph-relations";
-import { MODEL_KIND_COLORS, networkRelationshipRoutes, type MapPresentation } from "@/lib/model-network";
+import { isMapThemeId, MAP_THEME_STORAGE_KEY, modelKindColor, type MapThemeId } from "@/lib/model-map-theme";
+import { networkRelationshipRoutes, type MapPresentation } from "@/lib/model-network";
 import { MAP_OVERVIEW_LIMIT } from "@/lib/model-map";
 import { cn } from "@/lib/utils";
 
@@ -582,6 +583,7 @@ export function ModelGraph({
   onClearSelection: () => void;
 }) {
   const [layout, setLayout] = useState<LayoutMode>("LR");
+  const [mapTheme, setMapTheme] = useState<MapThemeId>("auto");
   const [focusQuery, setFocusQuery] = useState("");
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const compactView = Boolean(focusTitle) || objects.length <= MAP_OVERVIEW_LIMIT;
@@ -672,6 +674,13 @@ export function ModelGraph({
   useEffect(() => stopSoftForce, [stopSoftForce]);
 
   useEffect(() => {
+    const storedTheme = window.localStorage.getItem(MAP_THEME_STORAGE_KEY);
+    if (!isMapThemeId(storedTheme)) return;
+    const frame = window.requestAnimationFrame(() => setMapTheme(storedTheme));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
     stopSoftForce();
     setNodes(initial.nodes);
     setEdges(initial.edges);
@@ -729,6 +738,11 @@ export function ModelGraph({
 
   const applyLayout = useCallback((nextLayout: LayoutMode) => {
     setLayout(nextLayout);
+  }, []);
+
+  const applyMapTheme = useCallback((nextTheme: MapThemeId) => {
+    setMapTheme(nextTheme);
+    window.localStorage.setItem(MAP_THEME_STORAGE_KEY, nextTheme);
   }, []);
 
   const applySoftForce = useCallback((draggedNode: ArchitectureNode) => {
@@ -867,6 +881,7 @@ export function ModelGraph({
       data-testid="model-map"
       data-expanded={expanded}
       data-presentation={presentation}
+      data-map-theme={mapTheme}
     >
       <ModelMapToolbar
         navigation={navigation}
@@ -881,6 +896,8 @@ export function ModelGraph({
         onQueryChange={setFocusQuery}
         results={focusResults}
         onFocusResult={focusOnResult}
+        theme={mapTheme}
+        onThemeChange={applyMapTheme}
         viewportReady={Boolean(instance)}
         onZoomIn={() => { void instance?.zoomIn(); }}
         onZoomOut={() => { void instance?.zoomOut(); }}
@@ -925,11 +942,11 @@ export function ModelGraph({
             zoomable
             position="bottom-right"
             className="!hidden sm:!block"
-            nodeColor={(node) => presentation === "network" ? MODEL_KIND_COLORS[node.data.item.kind] : node.selected ? "#2f5bea" : "#cbd5e1"}
-            nodeStrokeColor={(node) => node.selected ? "#1d4ed8" : "#94a3b8"}
+            nodeColor={(node) => presentation === "network" ? modelKindColor(node.data.item.kind) : node.selected ? "var(--map-minimap-node-active)" : "var(--map-minimap-node)"}
+            nodeStrokeColor={(node) => node.selected ? "var(--map-minimap-stroke-active)" : "var(--map-minimap-stroke)"}
             nodeBorderRadius={presentation === "network" ? NODE_HEIGHT / 2 : 6}
-            bgColor="#ffffff"
-            maskColor="rgba(241, 245, 249, 0.64)"
+            bgColor="var(--map-minimap-bg)"
+            maskColor="var(--map-minimap-mask)"
             ariaLabel="Model map overview"
           /> : null}
           <Panel position="bottom-center" className="!mb-4 max-w-[calc(100%-7rem)]">
@@ -938,7 +955,7 @@ export function ModelGraph({
                 <ul className="mb-1.5 flex flex-wrap justify-center gap-x-3 gap-y-1 text-foreground" aria-label="Node types">
                   {visibleKinds.map((kind) => (
                     <li key={kind} className="flex items-center gap-1.5">
-                      <span className="size-2 rounded-full" style={{ backgroundColor: MODEL_KIND_COLORS[kind] }} aria-hidden="true" />
+                      <span className="size-2 rounded-full" style={{ backgroundColor: modelKindColor(kind) }} aria-hidden="true" />
                       {KIND_LABELS[kind]}
                     </li>
                   ))}

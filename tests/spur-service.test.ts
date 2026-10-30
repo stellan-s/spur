@@ -921,6 +921,60 @@ describe("AI-first Spur service", () => {
     }
   });
 
+  it("protects evidence-backed statements while allowing governed metadata and other content edits", async () => {
+    const store = new MemoryStore(":memory:");
+    const service = new SpurService(
+      new GitRepository(path.resolve(process.cwd(), "fixture-repo")),
+      store,
+      new EvidenceTestAdapter(),
+      "none",
+      "Test architect",
+    );
+    try {
+      const source = await store.upsertSource({
+        id: "src_edit_guard", kind: "repository", name: "Budget service",
+        locator: "https://github.com/example/budget", status: "connected", enabled: true,
+      });
+      const evidence = await store.storeEvidence(source.id, {
+        id: "budget-rule", kind: "code", repo: source.name, commit_sha: "a".repeat(40),
+        path: "src/budget.ts", start_line: 1, end_line: 1,
+        excerpt: "export const approvalRequired = true;", supports: ["observed_behavior"],
+      });
+      const rule = await store.upsertMemory({
+        kind: "rule", title: "Budget approval", statement: "Large budget changes require approval.",
+        state: "candidate", authority: "ai_inference", confidence: 0.9,
+        subjects: ["budget"], evidenceIds: [evidence.id], sourceIds: [source.id],
+        sourceVersion: "a".repeat(40), metadata: { evidence_status: "verified" },
+      });
+
+      await expect(service.editMemory(rule.id, {
+        action: "edit", kind: "rule", title: rule.title,
+        statement: "Large budget changes and all emergency changes require approval.",
+        subjects: rule.subjects,
+      })).rejects.toThrow("cannot be edited");
+
+      const renamed = await service.editMemory(rule.id, {
+        action: "edit", kind: "control", title: "Budget approval control",
+        statement: rule.statement, subjects: rule.subjects,
+      });
+      expect(renamed).toMatchObject({ kind: "control", title: "Budget approval control" });
+      expect(renamed.metadata.last_content_edited_at).toBeTypeOf("string");
+
+      const contentEditedAt = renamed.metadata.last_content_edited_at;
+      const governed = await service.editMemory(rule.id, {
+        action: "edit", kind: renamed.kind, title: renamed.title,
+        statement: renamed.statement, subjects: renamed.subjects, owner: "Finance owner",
+      });
+      expect(governed.metadata).toMatchObject({
+        owner: "Finance owner",
+        last_content_edited_at: contentEditedAt,
+        last_administrative_edited_at: expect.any(String),
+      });
+    } finally {
+      await service.close();
+    }
+  });
+
   it("answers from accepted memory when the live source has no matching evidence", async () => {
     const service = createService();
     try {
@@ -1035,6 +1089,38 @@ describe("additional repositories", () => {
       expect(updated.source_ids).toHaveLength(2);
     } finally {
       (await service.close());
+    }
+  });
+});
+
+describe("product documents", () => {
+  it("returns an edited approved document to draft review", async () => {
+    const service = createService();
+    try {
+      const created = await service.saveProductDocument({
+        document_type: "prd",
+        title: "Partner overview",
+        content: "# Partner overview\n\nInitial approved requirements.",
+        related_ids: [],
+      });
+      expect(created).toMatchObject({ state: "candidate", authority: "ai_inference", confidence: 0 });
+
+      const approved = await service.promoteMemory(created.id);
+      expect(approved).toMatchObject({ state: "accepted", authority: "person", confidence: 1 });
+      expect(approved.metadata.promoted_at).toEqual(expect.any(String));
+
+      const revised = await service.saveProductDocument({
+        document_type: "prd",
+        title: "Partner overview",
+        content: "# Partner overview\n\nRevised requirements that need renewed approval.",
+        related_ids: [],
+      }, created.id);
+      expect(revised).toMatchObject({ state: "candidate", authority: "ai_inference", confidence: 0 });
+      expect(revised.metadata.promoted_at).toBeUndefined();
+      expect(revised.metadata.promoted_by).toBeUndefined();
+      expect(revised.metadata.epistemic_status).toBeUndefined();
+    } finally {
+      await service.close();
     }
   });
 });

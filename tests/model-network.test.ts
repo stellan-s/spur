@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ModelNetworkNode } from "@/components/model-network-node";
 import { memoryKindSchema, type MemoryObject } from "@/core/memory-types";
 import { NODE_WIDTH, type NodePosition } from "@/lib/model-graph-layout";
+import { modelKindColor } from "@/lib/model-map-theme";
 import { MODEL_KIND_COLORS, NETWORK_DOT_Y, networkNodeRadius, networkRelationshipRoutes } from "@/lib/model-network";
 
 const positions = new Map([
@@ -108,7 +109,7 @@ describe("network node labels", () => {
     const html = renderToStaticMarkup(createElement(ModelNetworkNode, { item, muted: false, connectionCount: 1 }));
     expect(html).toContain("Northstar Commerce portal");
     expect(html).toContain("system · 1 connection");
-    expect(html).toContain(`background-color:${MODEL_KIND_COLORS.system}`);
+    expect(html).toContain(`background-color:${modelKindColor("system")}`);
     expect(html).not.toContain("confidence");
     expect(html).not.toContain("90%");
     expect(html).not.toContain("<button");

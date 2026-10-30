@@ -60,8 +60,8 @@ describe("Claude skill installation", () => {
     expect(installed).toMatchObject({
       id: "spur-write-requirements",
       installed: true,
-      installed_version: "1.1.0",
-      bundled_version: "1.1.0",
+      installed_version: "1.2.0",
+      bundled_version: "1.2.0",
       current: true,
       replaced: false,
       modified_files: [],

@@ -98,6 +98,211 @@
   --map-label-border: var(--border);
 }
 
+/* Architecture/entities map palettes are deliberately scoped to the map root. */
+[data-map-theme] {
+  --map-minimap-bg: var(--card);
+  --map-minimap-mask: color-mix(in srgb, var(--background) 72%, transparent);
+  --map-minimap-node: var(--muted-foreground);
+  --map-minimap-node-active: var(--primary);
+  --map-minimap-stroke: var(--border);
+  --map-minimap-stroke-active: var(--primary);
+  --map-kind-application: #a855f7;
+  --map-kind-system: #3b82f6;
+  --map-kind-integration: #f59e0b;
+  --map-kind-information: #06b6d4;
+  --map-kind-entity: #14b8a6;
+  --map-kind-capability: #22c55e;
+  --map-kind-process: #f97316;
+  --map-kind-control: #ef4444;
+  --map-kind-decision: #6366f1;
+  --map-kind-rule: #eab308;
+  --map-kind-observation: #94a3b8;
+  color-scheme: inherit;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+
+[data-map-theme="github-light"] {
+  color-scheme: light;
+  --brand: #0969da;
+  --brand-hover: #0550ae;
+  --brand-tint: #ddf4ff;
+  --ink: #1f2328;
+  --canvas: #f6f8fa;
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  --card: #ffffff;
+  --card-foreground: var(--ink);
+  --popover: #ffffff;
+  --popover-foreground: var(--ink);
+  --primary: var(--brand);
+  --primary-foreground: #ffffff;
+  --secondary: #eaeef2;
+  --secondary-foreground: var(--ink);
+  --muted: var(--secondary);
+  --muted-foreground: #59636e;
+  --accent: var(--brand-tint);
+  --accent-foreground: var(--ink);
+  --border: #d0d7de;
+  --input: var(--border);
+  --ring: var(--brand);
+  --map-edge: #8c959f;
+  --map-grid: #d8dee4;
+  --map-edge-active: var(--brand);
+  --map-label: var(--muted-foreground);
+  --map-label-active: var(--brand);
+  --map-label-bg: var(--card);
+  --map-label-border: var(--border);
+  --map-kind-application: #8250df;
+  --map-kind-system: #0969da;
+  --map-kind-integration: #bf8700;
+  --map-kind-information: #1b7c83;
+  --map-kind-entity: #1a7f64;
+  --map-kind-capability: #2da44e;
+  --map-kind-process: #bc4c00;
+  --map-kind-control: #cf222e;
+  --map-kind-decision: #6639ba;
+  --map-kind-rule: #9a6700;
+  --map-kind-observation: #6e7781;
+}
+
+[data-map-theme="github-dark"] {
+  color-scheme: dark;
+  --brand: #58a6ff;
+  --brand-hover: #79c0ff;
+  --brand-tint: #1f2d3d;
+  --ink: #e6edf3;
+  --canvas: #0d1117;
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  --card: #161b22;
+  --card-foreground: var(--ink);
+  --popover: #161b22;
+  --popover-foreground: var(--ink);
+  --primary: var(--brand);
+  --primary-foreground: #0d1117;
+  --secondary: #21262d;
+  --secondary-foreground: var(--ink);
+  --muted: var(--secondary);
+  --muted-foreground: #8b949e;
+  --accent: var(--brand-tint);
+  --accent-foreground: var(--ink);
+  --border: #30363d;
+  --input: var(--border);
+  --ring: var(--brand);
+  --map-edge: #6e7681;
+  --map-grid: #30363d;
+  --map-edge-active: var(--brand);
+  --map-label: #b1bac4;
+  --map-label-active: var(--brand);
+  --map-label-bg: var(--card);
+  --map-label-border: var(--border);
+  --map-kind-application: #bc8cff;
+  --map-kind-system: #58a6ff;
+  --map-kind-integration: #d29922;
+  --map-kind-information: #39c5cf;
+  --map-kind-entity: #3fb950;
+  --map-kind-capability: #56d364;
+  --map-kind-process: #f0883e;
+  --map-kind-control: #ff7b72;
+  --map-kind-decision: #a371f7;
+  --map-kind-rule: #e3b341;
+  --map-kind-observation: #8b949e;
+}
+
+[data-map-theme="nord"] {
+  color-scheme: dark;
+  --brand: #88c0d0;
+  --brand-hover: #8fbcbb;
+  --brand-tint: #3b4c5f;
+  --ink: #eceff4;
+  --canvas: #2e3440;
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  --card: #3b4252;
+  --card-foreground: var(--ink);
+  --popover: #3b4252;
+  --popover-foreground: var(--ink);
+  --primary: var(--brand);
+  --primary-foreground: #2e3440;
+  --secondary: #434c5e;
+  --secondary-foreground: var(--ink);
+  --muted: var(--secondary);
+  --muted-foreground: #d8dee9;
+  --accent: var(--brand-tint);
+  --accent-foreground: var(--ink);
+  --border: #4c566a;
+  --input: var(--border);
+  --ring: var(--brand);
+  --map-edge: #81a1c1;
+  --map-grid: #4c566a;
+  --map-edge-active: #8fbcbb;
+  --map-label: #d8dee9;
+  --map-label-active: #8fbcbb;
+  --map-label-bg: var(--card);
+  --map-label-border: var(--border);
+  --map-kind-application: #b48ead;
+  --map-kind-system: #81a1c1;
+  --map-kind-integration: #ebcb8b;
+  --map-kind-information: #88c0d0;
+  --map-kind-entity: #8fbcbb;
+  --map-kind-capability: #a3be8c;
+  --map-kind-process: #d08770;
+  --map-kind-control: #bf616a;
+  --map-kind-decision: #5e81ac;
+  --map-kind-rule: #e5c07b;
+  --map-kind-observation: #7b88a1;
+}
+
+[data-map-theme="dracula"] {
+  color-scheme: dark;
+  --brand: #bd93f9;
+  --brand-hover: #d6acff;
+  --brand-tint: #44475a;
+  --ink: #f8f8f2;
+  --canvas: #282a36;
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  --card: #343746;
+  --card-foreground: var(--ink);
+  --popover: #343746;
+  --popover-foreground: var(--ink);
+  --primary: var(--brand);
+  --primary-foreground: #282a36;
+  --secondary: #44475a;
+  --secondary-foreground: var(--ink);
+  --muted: var(--secondary);
+  --muted-foreground: #c7c7d1;
+  --accent: #44475a;
+  --accent-foreground: var(--ink);
+  --border: #6272a4;
+  --input: var(--border);
+  --ring: #ff79c6;
+  --map-edge: #6272a4;
+  --map-grid: #44475a;
+  --map-edge-active: #ff79c6;
+  --map-label: #f8f8f2;
+  --map-label-active: #ff79c6;
+  --map-label-bg: var(--card);
+  --map-label-border: var(--border);
+  --map-kind-application: #bd93f9;
+  --map-kind-system: #8be9fd;
+  --map-kind-integration: #f1fa8c;
+  --map-kind-information: #8be9fd;
+  --map-kind-entity: #50fa7b;
+  --map-kind-capability: #69ff94;
+  --map-kind-process: #ffb86c;
+  --map-kind-control: #ff5555;
+  --map-kind-decision: #ff79c6;
+  --map-kind-rule: #f1fa8c;
+  --map-kind-observation: #9aa0b4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-map-theme] {
+    transition: none;
+  }
+}
+
 @theme inline {
   --color-brand: var(--brand);
   --color-primary-hover: var(--brand-hover);

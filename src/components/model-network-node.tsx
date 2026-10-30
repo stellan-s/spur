@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 
 import type { MemoryObject } from "@/core/memory-types";
 import { NODE_HEIGHT, NODE_WIDTH } from "@/lib/model-graph-layout";
-import { MODEL_KIND_COLORS, NETWORK_DOT_Y, networkNodeRadius } from "@/lib/model-network";
+import { modelKindColor } from "@/lib/model-map-theme";
+import { NETWORK_DOT_Y, networkNodeRadius } from "@/lib/model-network";
 import { cn } from "@/lib/utils";
 
 export function ModelNetworkNode({
@@ -32,7 +33,7 @@ export function ModelNetworkNode({
           "absolute rounded-full border-2 border-background shadow-sm transition-[box-shadow,scale] duration-150 group-hover:scale-110 motion-reduce:transition-none",
           (selected || focused) && "ring-4 ring-foreground/20 ring-offset-2 ring-offset-card",
         )}
-        style={{ left: NODE_WIDTH / 2 - radius, top: NETWORK_DOT_Y - radius, width: radius * 2, height: radius * 2, backgroundColor: MODEL_KIND_COLORS[item.kind] }}
+        style={{ left: NODE_WIDTH / 2 - radius, top: NETWORK_DOT_Y - radius, width: radius * 2, height: radius * 2, backgroundColor: modelKindColor(item.kind) }}
       />
       <div className="absolute inset-x-2 top-[46px]">
         <p className={cn("mx-auto line-clamp-2 w-fit max-w-full rounded-sm bg-card/95 px-1.5 text-[13px] leading-4 text-foreground", selected ? "font-semibold" : "font-medium")}>{item.title}</p>

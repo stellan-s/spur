@@ -64,7 +64,7 @@ import {
 } from "../core/security-disclosure";
 import { analysisResultSchema } from "../core/types";
 import { logEvent, logUnexpectedError } from "../core/logger";
-import { productDocumentInputSchema } from "../core/product-document";
+import { productDocumentInputSchema, productDocumentPath } from "../core/product-document";
 
 const SPUR_PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const MCP_BETA_NOTICE = BETA_NOTICE_ENGLISH;
@@ -863,7 +863,7 @@ export async function createSpurMcpServer(options: {
     {
       title: "Resolve a knowledge gap",
       description:
-        "Close a gap after the missing knowledge has been modelled and reviewed against the question. Link at least one active, non-restricted catalog item and explain how it answers the question. Do not close merely because related items exist. Get the user's agreement before resolving. This records who resolved it and why; it does not promote the linked items or create a canned answer. Never include sensitive security details in the note.",
+        "Close a gap only after the missing knowledge has been modelled with verified evidence and reviewed against the question. Link at least one active, non-restricted catalog item, explain how it answers the question, and repeat the exact gap ID in confirmation. Objects without verified evidence, or whose content changed after their newest evidence, are refused. Do not close merely because related items exist. Get the user's agreement before resolving. This records who resolved it and why; it does not promote the linked items or create a canned answer. Never include sensitive security details in the note.",
       inputSchema: resolveKnowledgeGapInputSchema.extend({ id: z.string().min(1) }),
       outputSchema: knowledgeGapSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -961,7 +961,7 @@ export async function createSpurMcpServer(options: {
     {
       title: "Edit a Spur memory object",
       description:
-        "Edit an existing memory object's kind, title, statement, subjects, entity definition, owner and steward while preserving its evidence and relationships. Set sensitivity to restricted to mask an existing control; a restriction cannot be lifted by an edit. Use only when the user explicitly asks to change that object.",
+        "Edit an existing memory object's kind, title, statement, subjects, entity definition, owner and steward while preserving its evidence and relationships. A statement backed by code or test evidence cannot be changed here; use a source-analysis run with newly verified evidence instead. Other content edits remain allowed but prevent the object from resolving a knowledge gap until newer verified evidence is attached. Owner, steward and restriction changes do not stale evidence. Set sensitivity to restricted to mask an existing control; a restriction cannot be lifted by an edit. Use only when the user explicitly asks to change that object.",
       inputSchema: editMemoryToolInputSchema,
       outputSchema: memoryObjectSchema,
       annotations: {
@@ -1158,18 +1158,26 @@ export async function createSpurMcpServer(options: {
     }, async (input) => {
       requireNoSecurityFinding(input);
       const result = await withSpur((service) => service.saveProductDocument(input));
-      return { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result };
+      const documentPath = productDocumentPath(baseConfig.organization.slug, result.id);
+      return {
+        content: [{ type: "text", text: `Saved ${input.document_type.toUpperCase()} draft: ${result.title}\nOpen in Spur: ${documentPath}` }],
+        structuredContent: result,
+      };
     });
   server.registerTool("update_product_document", {
     title: "Update a PRD or specification",
-    description: "Replace a draft document's Markdown and related memory IDs. Read the document first. Restricted documents require restricted.write.",
+    description: "Replace a document's Markdown and related memory IDs. Read the document first. Any edit returns an approved document to draft status for renewed human approval. Restricted documents require restricted.write.",
     inputSchema: productDocumentInputSchema.extend({ id: z.string().startsWith("mem_") }),
     outputSchema: memoryObjectSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async (input) => {
     requireNoSecurityFinding(input);
     const result = await withSpur((service) => service.saveProductDocument(input, input.id));
-    return { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result };
+    const documentPath = productDocumentPath(baseConfig.organization.slug, result.id);
+    return {
+      content: [{ type: "text", text: `Updated ${input.document_type.toUpperCase()}: ${result.title}\nOpen in Spur: ${documentPath}` }],
+      structuredContent: result,
+    };
   });
   server.registerTool("list_product_documents", {
     title: "List PRDs and specifications",

@@ -103,6 +103,23 @@ describe("default landing page", () => {
     expect(result.props.organizationSlug).toBe("example");
   });
 
+  it("lets readers open Sources without source-management access", async () => {
+    const result = await page(["sources"]);
+    expect(result.type).toBe(SpurWorkspace);
+    expect(principal.permissions.has("sources.manage")).toBe(false);
+  });
+
+  it("opens product-document lists and stable detail links for readers", async () => {
+    const list = await page(["documents"], { type: "prd", q: "Partner" });
+    expect(list.type).toBe(SpurWorkspace);
+    expect(list.props.initialProductDocumentType).toBe("prd");
+    expect(list.props.initialProductDocumentQuery).toBe("Partner");
+
+    const detail = await page(["documents", "mem_prd"]);
+    expect(detail.type).toBe(SpurWorkspace);
+    expect(detail.props.initialProductDocumentId).toBe("mem_prd");
+  });
+
   it("still enforces model permissions and approval", async () => {
     principal.permissions.clear();
     await expect(page(["model"])).rejects.toThrow("Not found");

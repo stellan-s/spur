@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { localPrincipal } from "@/core/access-store";
 import { authorizePrincipalForApiRequest } from "@/core/auth";
 import { knowledgeGapSchema, updateKnowledgeGapInputSchema } from "@/core/knowledge-gap-types";
+import type { MemoryObject } from "@/core/memory-types";
 import { GitRepository } from "@/core/repository";
 import { SpurService } from "@/core/spur-service";
 import { createSpurMcpServer, recordKnowledgeGapToolInputSchema } from "@/mcp/server";
@@ -22,12 +23,30 @@ function setup() {
   return { store, service };
 }
 
-function memory(store: TestMemoryStore, overrides = {}) {
+async function memory(store: TestMemoryStore, overrides: {
+  state?: MemoryObject["state"];
+  statement?: string;
+  metadata?: Record<string, unknown>;
+  evidenceIds?: string[];
+} = {}) {
+  const source = await store.upsertSource({
+    id: "src_gap_tests", kind: "repository", name: "Planning service",
+    locator: "https://github.com/example/planning", status: "connected", enabled: true,
+  });
+  const evidence = await store.storeEvidence(source.id, {
+    id: "planning", kind: "code", repo: source.name, commit_sha: "a".repeat(40),
+    path: "src/planning.ts", start_line: 1, end_line: 1,
+    excerpt: "export const seasonalPlanning = true;", supports: ["observed_behavior"],
+  });
+  const { metadata, evidenceIds, ...values } = overrides;
   return store.upsertMemory({
     kind: "capability", title: "Campaign planning",
     statement: "Campaign planning supports scheduled seasonal budgets.",
     state: "candidate", authority: "ai_inference", confidence: 0.85,
-    ...overrides,
+    sourceIds: [source.id], sourceVersion: "a".repeat(40),
+    evidenceIds: evidenceIds ?? [evidence.id],
+    metadata: { evidence_status: "verified", ...metadata },
+    ...values,
   });
 }
 
@@ -64,7 +83,7 @@ describe("knowledge gap resolution", () => {
     const gap = await service.recordKnowledgeGap(question, "Not modelled yet.");
     expect(gap).toMatchObject({ status: "open", history: [], times_asked: 1 });
     const resolved = await service.updateKnowledgeGap(gap.id, {
-      action: "resolve", note: "The planning capability now describes seasonal budgets.", memory_ids: [item.id, item.id],
+      action: "resolve", note: "The planning capability now describes seasonal budgets.", memory_ids: [item.id, item.id], confirmation: gap.id,
     });
     expect(knowledgeGapSchema.parse(resolved)).toMatchObject({
       status: "resolved", question, times_asked: 1,
@@ -80,7 +99,7 @@ describe("knowledge gap resolution", () => {
     const { store, service } = setup();
     const item = await memory(store);
     const gap = await service.recordKnowledgeGap(question, "Not modelled.");
-    const input = { action: "resolve" as const, note: "The seasonal planning flow is documented.", memory_ids: [item.id] };
+    const input = { action: "resolve" as const, note: "The seasonal planning flow is documented.", memory_ids: [item.id], confirmation: gap.id };
     await service.updateKnowledgeGap(gap.id, input);
     const reopened = await service.updateKnowledgeGap(gap.id, { action: "reopen", note: "Weekend exceptions are still missing." });
     expect(reopened.status).toBe("open");
@@ -95,7 +114,7 @@ describe("knowledge gap resolution", () => {
     const { store, service } = setup();
     const item = await memory(store);
     const gap = await service.recordKnowledgeGap(question, "Not modelled.");
-    await service.updateKnowledgeGap(gap.id, { action: "resolve", note: "Planning is now modelled.", memory_ids: [item.id] });
+    await service.updateKnowledgeGap(gap.id, { action: "resolve", note: "Planning is now modelled.", memory_ids: [item.id], confirmation: gap.id });
     const repeated = await service.recordKnowledgeGap("How are  seasonal budgets planned?", "The stored answer was insufficient.");
     expect(repeated).toMatchObject({ id: gap.id, status: "open", times_asked: 2, first_asked_at: gap.first_asked_at });
     expect(repeated.history).toHaveLength(2);
@@ -107,22 +126,47 @@ describe("knowledge gap resolution", () => {
   });
 
   it("requires a note and supporting knowledge for resolution", () => {
-    expect(() => updateKnowledgeGapInputSchema.parse({ action: "resolve", note: "   ", memory_ids: ["mem_a"] })).toThrow();
-    expect(() => updateKnowledgeGapInputSchema.parse({ action: "resolve", note: "Now documented.", memory_ids: [] })).toThrow();
+    expect(() => updateKnowledgeGapInputSchema.parse({ action: "resolve", note: "   ", memory_ids: ["mem_a"], confirmation: "gap_a" })).toThrow();
+    expect(() => updateKnowledgeGapInputSchema.parse({ action: "resolve", note: "Now documented.", memory_ids: [], confirmation: "gap_a" })).toThrow();
+    expect(() => updateKnowledgeGapInputSchema.parse({ action: "resolve", note: "Now documented.", memory_ids: ["mem_a"] })).toThrow();
     expect(() => updateKnowledgeGapInputSchema.parse({ action: "reopen", note: " " })).toThrow();
+  });
+
+  it("requires the exact gap ID and fresh verified evidence", async () => {
+    const { store, service } = setup();
+    const gap = await service.recordKnowledgeGap(question, "Not modelled.");
+    const verified = await memory(store, { statement: "Verified seasonal planning knowledge." });
+    await expect(service.updateKnowledgeGap(gap.id, {
+      action: "resolve", note: "Now documented.", memory_ids: [verified.id], confirmation: "wrong-gap",
+    })).rejects.toThrow("Confirmation must match");
+
+    const withoutEvidence = await memory(store, {
+      statement: "Unevidenced seasonal planning knowledge.", evidenceIds: [],
+    });
+    await expect(service.updateKnowledgeGap(gap.id, {
+      action: "resolve", note: "Now documented.", memory_ids: [withoutEvidence.id], confirmation: gap.id,
+    })).rejects.toThrow("no complete verified evidence");
+
+    await store.updateMemory(verified.id, {
+      metadata: { ...verified.metadata, last_content_edited_at: "2099-01-01T00:00:00.000Z" },
+    });
+    await expect(service.updateKnowledgeGap(gap.id, {
+      action: "resolve", note: "Now documented.", memory_ids: [verified.id], confirmation: gap.id,
+    })).rejects.toThrow("changed after its newest verified evidence");
+    expect(await store.getKnowledgeGap(gap.id)).toMatchObject({ status: "open", history: [] });
   });
 
   it("rejects missing, unavailable and restricted knowledge without changing the gap", async () => {
     const { store, service } = setup();
     const gap = await service.recordKnowledgeGap(question, "Not modelled.");
     const ids = ["mem_missing"];
-    for (const state of ["stale", "disputed", "deleted"]) {
+    for (const state of ["stale", "disputed", "deleted"] as const) {
       ids.push((await memory(store, { state, statement: `Unavailable ${state} planning knowledge.` })).id);
     }
     ids.push((await memory(store, { statement: "Restricted planning knowledge.", metadata: { sensitivity: "restricted" } })).id);
     ids.push((await memory(store, { statement: "Legacy archived planning knowledge.", metadata: { deleted_at: "2026-01-01" } })).id);
     for (const id of ids) {
-      await expect(service.updateKnowledgeGap(gap.id, { action: "resolve", note: "Now documented.", memory_ids: [id] })).rejects.toThrow();
+      await expect(service.updateKnowledgeGap(gap.id, { action: "resolve", note: "Now documented.", memory_ids: [id], confirmation: gap.id })).rejects.toThrow();
       expect(await store.getKnowledgeGap(gap.id)).toMatchObject({ status: "open", history: [] });
     }
   });
@@ -133,10 +177,10 @@ describe("knowledge gap resolution", () => {
     const firstGap = await first.service.recordKnowledgeGap(question, "First organization's gap.");
     const secondItem = await memory(second.store);
     await expect(second.service.updateKnowledgeGap(firstGap.id, { action: "reopen", note: "Not answered." })).rejects.toMatchObject({ status: 404 });
-    await expect(first.service.updateKnowledgeGap(firstGap.id, { action: "resolve", note: "Now documented.", memory_ids: [secondItem.id] })).rejects.toThrow();
+    await expect(first.service.updateKnowledgeGap(firstGap.id, { action: "resolve", note: "Now documented.", memory_ids: [secondItem.id], confirmation: firstGap.id })).rejects.toThrow();
     const secondGap = await second.service.recordKnowledgeGap(question, "Second organization's gap.");
     expect(secondGap.id).toBe(firstGap.id);
-    await second.service.updateKnowledgeGap(secondGap.id, { action: "resolve", note: "Now documented.", memory_ids: [secondItem.id] });
+    await second.service.updateKnowledgeGap(secondGap.id, { action: "resolve", note: "Now documented.", memory_ids: [secondItem.id], confirmation: secondGap.id });
     expect((await first.store.getKnowledgeGap(firstGap.id))?.status).toBe("open");
     expect((await second.store.getKnowledgeGap(secondGap.id))?.status).toBe("resolved");
   });
@@ -145,7 +189,7 @@ describe("knowledge gap resolution", () => {
     const { store, service } = setup();
     const item = await memory(store);
     const gap = await service.recordKnowledgeGap(question, "Not modelled.");
-    const input = { action: "resolve" as const, note: "Now documented.", memory_ids: [item.id] };
+    const input = { action: "resolve" as const, note: "Now documented.", memory_ids: [item.id], confirmation: gap.id };
     const results = await Promise.allSettled([service.updateKnowledgeGap(gap.id, input), service.updateKnowledgeGap(gap.id, input)]);
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);

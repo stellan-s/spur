@@ -30,6 +30,23 @@ function patch(id: string, body: unknown) {
   }), { params: Promise.resolve({ id }) });
 }
 
+async function verifiedMemory(store: TestMemoryStore, title: string, statement: string) {
+  const source = await store.upsertSource({
+    id: "src_gap_api", kind: "repository", name: "Planning service",
+    locator: "https://github.com/example/planning", status: "connected", enabled: true,
+  });
+  const evidence = await store.storeEvidence(source.id, {
+    id: title, kind: "code", repo: source.name, commit_sha: "a".repeat(40),
+    path: "src/planning.ts", start_line: 1, end_line: 1,
+    excerpt: "export const seasonalPlanning = true;", supports: ["observed_behavior"],
+  });
+  return store.upsertMemory({
+    kind: "process", title, statement, state: "accepted", authority: "ai_inference", confidence: 1,
+    evidenceIds: [evidence.id], sourceIds: [source.id], sourceVersion: "a".repeat(40),
+    metadata: { evidence_status: "verified" },
+  });
+}
+
 afterEach(async () => {
   await Promise.all(stores.splice(0).map((store) => store.close()));
   vi.unstubAllEnvs();
@@ -39,11 +56,8 @@ describe("knowledge gap HTTP API", () => {
   it("resolves, filters, and reopens a gap through the authenticated route", async () => {
     const store = setup();
     const gap = await store.recordKnowledgeGap("How does seasonal planning work?", "Not modelled.");
-    const memory = await store.upsertMemory({
-      kind: "process", title: "Seasonal planning", statement: "A planner schedules the campaign budget.",
-      state: "accepted", authority: "person", confidence: 1,
-    });
-    const response = await patch(gap.id, { action: "resolve", note: "The planning process describes the steps.", memory_ids: [memory.id] });
+    const memory = await verifiedMemory(store, "Seasonal planning", "A planner schedules the campaign budget.");
+    const response = await patch(gap.id, { action: "resolve", note: "The planning process describes the steps.", memory_ids: [memory.id], confirmation: gap.id });
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(await response.json()).toMatchObject({ status: "resolved", history: [{ action: "resolve", memory_ids: [memory.id] }] });
@@ -58,7 +72,7 @@ describe("knowledge gap HTTP API", () => {
   it("returns validation and not-found errors without mutating a gap", async () => {
     const store = setup();
     const gap = await store.recordKnowledgeGap("What can a project contain?", "Not modelled.");
-    expect((await patch(gap.id, { action: "resolve", note: "Now known.", memory_ids: [] })).status).toBe(400);
+    expect((await patch(gap.id, { action: "resolve", note: "Now known.", memory_ids: [], confirmation: gap.id })).status).toBe(400);
     expect((await patch("gap_missing", { action: "reopen", note: "Still missing." })).status).toBe(404);
     expect((await GET(new Request("http://localhost/api/knowledge-gaps?status=invalid"))).status).toBe(400);
     expect(await store.getKnowledgeGap(gap.id)).toMatchObject({ status: "open", history: [] });
@@ -78,10 +92,7 @@ describe("knowledge gap HTTP API", () => {
 
   it("resolves and reopens through MCP without a model provider", async () => {
     const store = setup();
-    const item = await store.upsertMemory({
-      kind: "process", title: "Planning", statement: "Planning schedules seasonal budgets.",
-      state: "accepted", authority: "person", confidence: 1,
-    });
+    const item = await verifiedMemory(store, "Planning", "Planning schedules seasonal budgets.");
     const gap = await store.recordKnowledgeGap("How does planning work?", "Not modelled.");
     type Server = {
       _registeredTools: Record<string, {
@@ -93,7 +104,7 @@ describe("knowledge gap HTTP API", () => {
       features: { ask: true, code_search: "off", model_provider: "none", modelling_writes: true, isms: true, wiki: true, remote_mcp: false, knowledge_gaps: true },
     }) as unknown as Server;
     const result = await server._registeredTools.resolve_knowledge_gap.handler({
-      id: gap.id, note: "The planning process now describes seasonal budgets.", memory_ids: [item.id],
+      id: gap.id, note: "The planning process now describes seasonal budgets.", memory_ids: [item.id], confirmation: gap.id,
     });
     expect(knowledgeGapSchema.parse(result.structuredContent)).toMatchObject({ status: "resolved", history: [{ memory_ids: [item.id] }] });
     expect(result.content.some((part) => part.text.includes(BETA_NOTICE_ENGLISH))).toBe(true);

@@ -14,10 +14,10 @@ export async function GET(request: Request) {
     const { config } = await authorizeApiRequest(request);
     access = new AccessStore(config.databaseUrl);
     return NextResponse.json({
-      tokens: await access.listOAuthTokens(config.organization.slug),
+      grants: await access.listOAuthGrants(config.organization.slug),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    const message = publicErrorMessage(error, "MCP tokens could not be loaded.");
+    const message = publicErrorMessage(error, "Remote MCP connections could not be loaded.");
     return NextResponse.json({ error: message }, { status: error instanceof SpurError ? error.status : 500 });
   } finally {
     await access?.close();

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { productDocumentInputSchema } from "@/core/product-document";
+import {
+  isProductDocument,
+  productDocumentInputSchema,
+  productDocumentPath,
+  productDocumentType,
+} from "@/core/product-document";
 
 describe("product-document input", () => {
   it("accepts a delivery-ready PRD with optional requirements sections", () => {
@@ -21,5 +26,17 @@ describe("product-document input", () => {
       content,
       related_ids: [],
     }).content).toBe(content);
+  });
+
+  it("identifies product documents without treating ordinary observations as documents", () => {
+    expect(productDocumentType({ metadata: { document_type: "prd" } })).toBe("prd");
+    expect(productDocumentType({ metadata: { document_type: "spec" } })).toBe("spec");
+    expect(isProductDocument({ metadata: { document_type: "brief" } })).toBe(false);
+    expect(isProductDocument({ metadata: {} })).toBe(false);
+  });
+
+  it("builds an organization-scoped document path", () => {
+    expect(productDocumentPath("north europe", "mem_prd/1"))
+      .toBe("/o/north%20europe/documents/mem_prd%2F1");
   });
 });

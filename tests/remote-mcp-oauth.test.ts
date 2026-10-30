@@ -97,6 +97,53 @@ describe("remote MCP OAuth", () => {
     })).rejects.toThrow(/invalid/);
   });
 
+  it("lists a rotating token chain as one connection and revokes the whole grant", async () => {
+    const access = store();
+    const organizationId = `oauth-grant-${randomUUID()}`;
+    const user = await approvedUser(access, organizationId);
+    const client = await access.registerOAuthClient({
+      clientName: "Claude Code",
+      redirectUris: ["http://127.0.0.1:43110/callback"],
+    });
+    const verifier = "g".repeat(64);
+    const code = await access.saveOAuthAuthorizationCode({
+      clientId: client.clientId,
+      organizationId,
+      userId: user.principal.userId,
+      redirectUri: client.redirectUris[0],
+      codeChallenge: createHash("sha256").update(verifier).digest("base64url"),
+      scope: "mcp",
+      resource: "https://spur.example/mcp",
+    });
+    const first = await access.exchangeOAuthAuthorizationCode({
+      code,
+      clientId: client.clientId,
+      redirectUri: client.redirectUris[0],
+      codeVerifier: verifier,
+    });
+    const second = await access.refreshOAuthToken({
+      refreshToken: first.refreshToken,
+      clientId: client.clientId,
+    });
+
+    const grants = await access.listOAuthGrants(organizationId);
+    expect(grants).toHaveLength(1);
+    expect(grants[0]).toMatchObject({
+      userId: user.principal.userId,
+      clientId: client.clientId,
+      clientName: "Claude Code",
+      userDisplayName: "Owner",
+      status: "active",
+      revokedAt: null,
+    });
+
+    await access.revokeOAuthGrantById(organizationId, grants[0].id, user.principal.userId);
+    await expect(access.authenticateMcpAccessToken(second.accessToken)).rejects.toThrow(/invalid/);
+    await expect(access.listOAuthGrants(organizationId)).resolves.toMatchObject([
+      { id: grants[0].id, status: "revoked", revokedAt: expect.any(String) },
+    ]);
+  });
+
   it("revokes a user's MCP tokens and enforces the per-user rate limit", async () => {
     const access = store();
     const organizationId = `oauth-revoke-${randomUUID()}`;

@@ -39,12 +39,17 @@ type Features = {
   knowledge_gaps: boolean;
 };
 
-type McpToken = {
+type McpGrant = {
   id: string;
   userId: string;
+  userEmail: string;
+  userDisplayName: string;
   clientId: string;
-  createdAt: string;
-  expiresAt: string;
+  clientName: string;
+  authorizedAt: string;
+  lastRenewedAt: string;
+  refreshExpiresAt: string;
+  status: "active" | "expired" | "revoked";
   revokedAt: string | null;
 };
 
@@ -82,7 +87,7 @@ export function AdminAccess({ organizationId }: { organizationId: string }) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [features, setFeatures] = useState<Features | null>(null);
-  const [mcpTokens, setMcpTokens] = useState<McpToken[]>([]);
+  const [mcpGrants, setMcpGrants] = useState<McpGrant[]>([]);
   const [selectedRoles, setSelectedRoles] = useState<Record<string, string[]>>({});
   const [selectedPermission, setSelectedPermission] = useState<Record<string, string>>({});
   const [roleName, setRoleName] = useState("");
@@ -107,7 +112,7 @@ export function AdminAccess({ organizationId }: { organizationId: string }) {
     const requestsPayload = await requestsResponse.json() as { access_requests?: AccessRequest[]; error?: string };
     const rolesPayload = await rolesResponse.json() as { roles?: Role[]; permissions?: string[]; error?: string };
     const featuresPayload = await featuresResponse.json() as { features?: Features; error?: string };
-    const tokensPayload = await tokensResponse.json() as { tokens?: McpToken[]; error?: string };
+    const tokensPayload = await tokensResponse.json() as { grants?: McpGrant[]; error?: string };
     if (!requestsResponse.ok) throw new Error(message(requestsPayload, "Access requests could not be loaded."));
     if (!rolesResponse.ok) throw new Error(message(rolesPayload, "Roles could not be loaded."));
     if (!featuresResponse.ok) throw new Error(message(featuresPayload, "Features could not be loaded."));
@@ -117,7 +122,7 @@ export function AdminAccess({ organizationId }: { organizationId: string }) {
     setRoles(rolesPayload.roles ?? []);
     setPermissions(rolesPayload.permissions ?? []);
     setFeatures(featuresPayload.features ?? null);
-    setMcpTokens(tokensPayload.tokens ?? []);
+    setMcpGrants(tokensPayload.grants ?? []);
     setSelectedRoles(Object.fromEntries(nextRequests.map((item) => [item.user_id, item.role_ids])));
   }, [headers]);
 
@@ -232,8 +237,8 @@ export function AdminAccess({ organizationId }: { organizationId: string }) {
     }
   }
 
-  async function revokeMcpToken(id: string) {
-    setBusy(`mcp-token:${id}`);
+  async function revokeMcpGrant(id: string) {
+    setBusy(`mcp-grant:${id}`);
     setError("");
     try {
       const response = await fetch(`/api/admin/mcp-tokens/${encodeURIComponent(id)}`, {
@@ -242,11 +247,11 @@ export function AdminAccess({ organizationId }: { organizationId: string }) {
       });
       if (!response.ok) {
         const payload: unknown = await response.json();
-        throw new Error(message(payload, "The MCP token could not be revoked."));
+        throw new Error(message(payload, "The MCP connection could not be revoked."));
       }
       await refresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The MCP token could not be revoked.");
+      setError(caught instanceof Error ? caught.message : "The MCP connection could not be revoked.");
     } finally {
       setBusy("");
     }
@@ -398,15 +403,54 @@ export function AdminAccess({ organizationId }: { organizationId: string }) {
 
       <section role="tabpanel" id="admin-panel-mcp" aria-labelledby="admin-tab-mcp" hidden={activeTab !== "mcp"} className="py-7">
         <h2 className="text-lg font-semibold">Remote MCP access</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Revoke active OAuth grants used by remote Model Context Protocol clients.</p>
-        <div className="mt-4 divide-y border-y">
-          {mcpTokens.map((token) => (
-            <div key={token.id} className="flex flex-wrap items-center justify-between gap-4 py-4">
-              <div><p className="font-medium">{token.clientId}</p><p className="mt-1 text-xs text-muted-foreground">User {token.userId} · Created {new Date(token.createdAt).toLocaleString()} · Expires {new Date(token.expiresAt).toLocaleString()}</p></div>
-              {token.revokedAt ? <Badge variant="secondary">Revoked</Badge> : <Button size="sm" variant="outline" disabled={busy !== ""} onClick={() => void revokeMcpToken(token.id)}>Revoke</Button>}
-            </div>
-          ))}
-          {mcpTokens.length === 0 ? <p className="py-5 text-sm text-muted-foreground">No remote MCP grants yet.</p> : null}
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">Each row is one authorised client connection. Its 15-minute access token renews automatically while the client is in use; after 30 days without renewal, the user must connect again. Client names are self-reported.</p>
+        <div className="mt-4 border-y">
+          <Table aria-label="Remote MCP connections">
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">Client</TableHead>
+                <TableHead scope="col">User</TableHead>
+                <TableHead scope="col">Status</TableHead>
+                <TableHead scope="col" className="hidden lg:table-cell">Activity</TableHead>
+                <TableHead scope="col" className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {mcpGrants.map((grant) => {
+                const status = grant.status === "active" ? "Active" : grant.status === "expired" ? "Expired" : "Revoked";
+                return (
+                  <TableRow key={grant.id}>
+                    <TableCell className="min-w-48 py-5 align-top">
+                      <span className="block font-medium">{grant.clientName}</span>
+                      <span className="mt-1 block max-w-64 break-all font-mono text-[11px] text-muted-foreground">{grant.clientId}</span>
+                    </TableCell>
+                    <TableCell className="min-w-44 align-top">
+                      <span className="block text-sm font-medium">{grant.userDisplayName || grant.userEmail}</span>
+                      <span className="mt-1 block text-xs text-muted-foreground">{grant.userEmail}</span>
+                    </TableCell>
+                    <TableCell className="min-w-44 align-top">
+                      <Badge variant={status === "Active" ? "default" : "secondary"}>{status}</Badge>
+                      <span className="mt-2 block text-xs leading-5 text-muted-foreground">
+                        {status === "Active"
+                          ? `Reconnect if unused after ${new Date(grant.refreshExpiresAt).toLocaleString()}`
+                          : status === "Revoked" && grant.revokedAt
+                            ? `Revoked ${new Date(grant.revokedAt).toLocaleString()}`
+                            : `Expired ${new Date(grant.refreshExpiresAt).toLocaleString()}`}
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden min-w-52 align-top text-xs leading-5 text-muted-foreground lg:table-cell">
+                      <span className="block">Connected {new Date(grant.authorizedAt).toLocaleString()}</span>
+                      <span className="block">Last renewed {new Date(grant.lastRenewedAt).toLocaleString()}</span>
+                    </TableCell>
+                    <TableCell className="align-top text-right">
+                      {status === "Active" ? <Button size="sm" variant="outline" disabled={busy !== ""} onClick={() => void revokeMcpGrant(grant.id)}>Revoke access</Button> : <span className="text-xs text-muted-foreground">No access</span>}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {mcpGrants.length === 0 ? <TableRow><TableCell colSpan={5} className="py-5 text-muted-foreground">No remote MCP connections yet.</TableCell></TableRow> : null}
+            </TableBody>
+          </Table>
         </div>
       </section>
 

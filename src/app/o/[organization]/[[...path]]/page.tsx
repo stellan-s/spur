@@ -52,8 +52,9 @@ export default async function OrganizationWorkspacePage({ params, searchParams }
   if (route === "model/composition") redirect(`/o/${organization}/model/health`);
   if (route === "memory") redirect(`/o/${organization}/model/catalog?kind=decision`);
   const valid =
-    ["ask", "model", "model/catalog", "model/health", "model/gaps", "sources", "isms/controls", "wiki", "guide"].includes(route) ||
+    ["ask", "model", "model/catalog", "model/health", "model/gaps", "documents", "sources", "isms/controls", "wiki", "guide"].includes(route) ||
     (path.length === 2 && path[0] === "wiki" && Boolean(path[1])) ||
+    (path.length === 2 && path[0] === "documents" && Boolean(path[1])) ||
     (path.length === 3 && path[0] === "model" && path[1] === "catalog" && Boolean(path[2]));
   if (!valid) notFound();
 
@@ -104,6 +105,9 @@ export default async function OrganizationWorkspacePage({ params, searchParams }
       initialModelEntityId={path[0] === "model" && path[1] === "catalog" ? path[2] ?? "" : ""}
       initialCatalogQuery={first(query.q)}
       initialCatalogKind={first(query.kind) || "all"}
+      initialProductDocumentId={path[0] === "documents" ? path[1] ?? "" : ""}
+      initialProductDocumentType={first(query.type) || "all"}
+      initialProductDocumentQuery={first(query.q)}
       initialConversationId={first(query.conversation)}
       initialIsmsSelection={first(query.selected)}
       initialWikiPageId={path[0] === "wiki" ? path[1] ?? "" : ""}

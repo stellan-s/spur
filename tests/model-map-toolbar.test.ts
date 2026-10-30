@@ -11,6 +11,7 @@ function toolbarProps() {
     onToggleExpanded: vi.fn(), presentation: "network" as const, onPresentationChange: vi.fn(),
     layout: "balanced" as const, onLayoutChange: vi.fn(), searchPlaceholder: "Search connected entities",
     query: "", onQueryChange: vi.fn(), results: [{ id: "project", title: "Project" }], onFocusResult: vi.fn(),
+    theme: "auto" as const, onThemeChange: vi.fn(),
     viewportReady: true, onZoomIn: vi.fn(), onZoomOut: vi.fn(), onFitView: vi.fn(),
   };
 }
@@ -25,13 +26,25 @@ function findControl(node: ReactNode, label: string): Record<string, unknown> | 
 describe("map top toolbar", () => {
   it("groups navigation, display, layout, search and zoom in one responsive surface", () => {
     const html = renderToStaticMarkup(createElement(ModelMapToolbar, toolbarProps()));
-    for (const label of ["Map controls", "Node display", "Map layout", "Map zoom", "Search connected entities"]) {
+    for (const label of ["Map controls", "Node display", "Map layout", "Map theme", "Map zoom", "Search connected entities"]) {
       expect(html).toContain(`aria-label="${label}"`);
     }
     expect(html).toContain("flex-wrap items-center gap-2");
     expect(html).toContain("min-w-40 flex-1 basis-56");
     expect(html).not.toContain("backdrop-blur");
     expect(html).not.toContain("position:absolute");
+  });
+
+  it("offers map-only themes and reports the selected palette", () => {
+    const props = toolbarProps();
+    const tree = ModelMapToolbar(props);
+    const select = findControl(tree, "Map theme")!;
+    expect(renderToStaticMarkup(tree)).toContain("GitHub Light");
+    expect(renderToStaticMarkup(tree)).toContain("GitHub Dark");
+    expect(renderToStaticMarkup(tree)).toContain("Nord");
+    expect(renderToStaticMarkup(tree)).toContain("Dracula");
+    (select.onChange as (event: { target: { value: string } }) => void)({ target: { value: "dracula" } });
+    expect(props.onThemeChange).toHaveBeenCalledWith("dracula");
   });
 
   it("keeps zoom and layout callbacks working after moving out of the canvas", () => {

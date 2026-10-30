@@ -22,6 +22,7 @@ export function KnowledgeGapDetail({ gap, workspace, canWrite, onClose, onUpdate
   const [note, setNote] = useState("");
   const [query, setQuery] = useState("");
   const [memoryIds, setMemoryIds] = useState<string[]>([]);
+  const [confirmation, setConfirmation] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const resolving = gap.status === "open";
@@ -43,7 +44,9 @@ export function KnowledgeGapDetail({ gap, workspace, canWrite, onClose, onUpdate
       const response = await fetch(`/api/knowledge-gaps/${encodeURIComponent(gap.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "x-spur-organization": workspace.organization.slug },
-        body: JSON.stringify(resolving ? { action: "resolve", note, memory_ids: memoryIds } : { action: "reopen", note }),
+        body: JSON.stringify(resolving
+          ? { action: "resolve", note, memory_ids: memoryIds, confirmation }
+          : { action: "reopen", note }),
       });
       const payload: unknown = await response.json();
       if (!response.ok) {
@@ -106,9 +109,25 @@ export function KnowledgeGapDetail({ gap, workspace, canWrite, onClose, onUpdate
                 {candidates.length > 30 ? <p className="text-xs text-muted-foreground">Showing 30 of {candidates.length}. Search to narrow the list.</p> : null}
               </fieldset>
             ) : null}
+            {resolving ? (
+              <div>
+                <label htmlFor="gap-resolution-confirmation" className="text-sm font-medium">Confirm gap ID</label>
+                <Input
+                  id="gap-resolution-confirmation"
+                  value={confirmation}
+                  onChange={(event) => setConfirmation(event.target.value)}
+                  placeholder={gap.id}
+                  autoComplete="off"
+                  required
+                  disabled={saving}
+                  className="mt-2 font-mono"
+                />
+                <p className="mt-2 text-xs text-muted-foreground">Enter the exact gap ID to confirm that this specific gap is answered.</p>
+              </div>
+            ) : null}
             {error ? <Alert variant="destructive"><AlertTitle>Could not update gap</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
             <div className="flex gap-2">
-              <Button type="submit" disabled={saving || note.trim().length < 5 || (resolving && !memoryIds.length)}>{saving ? "Saving…" : resolving ? "Resolve gap" : "Reopen gap"}</Button>
+              <Button type="submit" disabled={saving || note.trim().length < 5 || (resolving && (!memoryIds.length || confirmation !== gap.id))}>{saving ? "Saving…" : resolving ? "Resolve gap" : "Reopen gap"}</Button>
               <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
             </div>
           </form>

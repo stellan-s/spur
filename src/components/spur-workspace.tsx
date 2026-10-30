@@ -18,6 +18,7 @@ import {
   CircleHelp,
   Clipboard,
   Database,
+  FileText,
   FileSearch,
   GitBranch,
   LoaderCircle,
@@ -67,6 +68,7 @@ import type {
   Source,
   Workspace,
 } from "@/core/memory-types";
+import { isProductDocument, productDocumentPath } from "@/core/product-document";
 import { signInPath } from "@/core/public-url";
 import { cn } from "@/lib/utils";
 import { EvidenceItem } from "./evidence-item";
@@ -80,9 +82,10 @@ import { AdminAccess } from "./admin-access";
 import { NavigationProgress } from "./navigation-progress";
 import { WorkspaceLoading } from "./workspace-loading";
 import { RemoveSourceButton } from "./remove-source-button";
+import { ProductDocuments } from "./product-documents";
 import { isAuthenticatedSession, useWorkspaceState, type WorkspaceView } from "./workspace-state";
 
-type View = "ask" | "model" | "catalog" | "entity" | "health" | "gaps" | "sources" | "guide" | "isms" | "wiki" | "admin";
+type View = "ask" | "model" | "catalog" | "entity" | "health" | "gaps" | "documents" | "document" | "sources" | "guide" | "isms" | "wiki" | "admin";
 type ThemePreference = "system" | "light" | "dark";
 
 type ConfiguredOrganization = {
@@ -219,14 +222,17 @@ function Navigation({ view, basePath, permissions, featureValues, onNavigate }: 
   const items = [
     { id: "ask" as const, label: "Ask Spur", icon: Sparkles, permission: "memory.ask", enabled: featureValues?.ask !== false },
     { id: "model" as const, label: "Model", icon: Boxes, permission: "memory.read", enabled: true },
+    { id: "documents" as const, label: "Product documents", icon: FileText, permission: "memory.read", enabled: true },
     { id: "wiki" as const, label: "Wiki", icon: BookOpen, permission: "wiki.read", enabled: featureValues?.wiki !== false },
     { id: "isms" as const, label: "ISMS controls", icon: ShieldCheck, permission: "isms.read", enabled: featureValues?.isms !== false },
-    { id: "sources" as const, label: "Sources", icon: Network, permission: "sources.manage", enabled: true },
+    { id: "sources" as const, label: "Sources", icon: Network, permission: "memory.read", enabled: true },
     { id: "admin" as const, label: "Administration", icon: LockKeyhole, permission: "users.manage", enabled: true },
     { id: "guide" as const, label: "Guide", icon: BookOpen, permission: null, enabled: true },
   ].filter((item) => item.enabled && (item.permission === null || permissions.includes(item.permission)));
   const isActive = (id: (typeof items)[number]["id"]) =>
-    view === id || (id === "model" && ["catalog", "health", "gaps", "entity"].includes(view));
+    view === id ||
+    (id === "model" && ["catalog", "health", "gaps", "entity"].includes(view)) ||
+    (id === "documents" && view === "document");
   return (
     <nav className="flex w-max min-w-full gap-1 pb-1 md:w-auto md:min-w-0 md:flex-col md:pb-0" aria-label="Workspace">
       {items.map(({ id, label, icon: Icon }) => (
@@ -338,6 +344,8 @@ function WorkspaceSidebar({
   onThemeChange: (preference: ThemePreference) => void;
 }) {
   const organizationId = `${idPrefix}-organization`;
+  const profileMenuId = `${idPrefix}-profile-menu`;
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const session = workspace.session;
   const authenticated = isAuthenticatedSession(session);
   return (
@@ -387,40 +395,55 @@ function WorkspaceSidebar({
       <div className="mt-auto border-t px-2 pt-4">
         <div className="flex items-center gap-2.5">
           {authenticated ? (
-            <details
-              className="relative shrink-0"
+            <div
+              className="relative min-w-0 flex-1"
               onBlur={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false;
+                if (!event.currentTarget.contains(event.relatedTarget)) setProfileMenuOpen(false);
               }}
               onKeyDown={(event) => {
                 if (event.key === "Escape") {
-                  event.currentTarget.open = false;
-                  event.currentTarget.querySelector("summary")?.focus();
+                  setProfileMenuOpen(false);
+                  event.currentTarget.querySelector<HTMLButtonElement>("[aria-haspopup='menu']")?.focus();
                 }
               }}
             >
-              <summary aria-label="Account menu" className="flex size-8 cursor-pointer list-none items-center justify-center rounded-full bg-muted text-xs font-semibold outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-                {(session.display_name || session.email).split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase()}
-              </summary>
-              <div className="absolute bottom-full left-0 z-50 mb-2 w-52 rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
-                <Button type="button" variant="ghost" className="w-full justify-start" disabled={signingOut} onClick={onSignOut}>
-                  <LogOut aria-hidden="true" /> {signingOut ? "Signing out…" : "Sign out"}
-                </Button>
-              </div>
-            </details>
+              <button
+                type="button"
+                aria-label="Open profile menu"
+                aria-haspopup="menu"
+                aria-expanded={profileMenuOpen}
+                aria-controls={profileMenuId}
+                className="-mx-1 flex w-[calc(100%+0.5rem)] cursor-pointer items-center gap-2.5 rounded-md p-1 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => setProfileMenuOpen((open) => !open)}
+              >
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">
+                  {(session.display_name || session.email).split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{session.display_name || session.email}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{session.email}</span>
+                </span>
+                <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", profileMenuOpen && "rotate-180")} aria-hidden="true" />
+              </button>
+              {profileMenuOpen ? (
+                <div id={profileMenuId} role="menu" className="absolute bottom-full left-0 z-50 mb-2 w-full min-w-52 rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+                  <Button type="button" role="menuitem" variant="ghost" className="w-full justify-start" disabled={signingOut} onClick={onSignOut}>
+                    <LogOut aria-hidden="true" /> {signingOut ? "Signing out…" : "Sign out"}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
           ) : (
-            <span className="flex size-8 items-center justify-center rounded-full bg-muted">
-              <Bot className="size-4 text-muted-foreground" aria-hidden="true" />
-            </span>
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted">
+                <Bot className="size-4 text-muted-foreground" aria-hidden="true" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{workspace.actor}</p>
+                <p className="truncate text-xs text-muted-foreground">{provider} · Local mode</p>
+              </div>
+            </div>
           )}
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{session?.display_name ?? workspace.actor}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {authenticated
-                ? session.email
-                : `${provider} · Local mode`}
-            </p>
-          </div>
           <ThemePicker preference={themePreference} onChange={onThemeChange} />
         </div>
       </div>
@@ -891,6 +914,7 @@ function SourceIcon({ source }: { source: Source }) {
 }
 
 function SourcesView({ workspace, onRefresh }: { workspace: Workspace; onRefresh: () => Promise<void> }) {
+  const canManageSources = workspace.permissions?.includes("sources.manage") === true;
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -969,16 +993,20 @@ function SourcesView({ workspace, onRefresh }: { workspace: Workspace; onRefresh
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Sources</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Manage where Spur may investigate. Credentials are never stored in source URLs.
+            {canManageSources
+              ? "Manage where Spur may investigate. Credentials are never stored in source URLs."
+              : "View where Spur may investigate and connect an AI agent through MCP."}
           </p>
         </div>
-        <Button type="button" onClick={() => setShowForm((current) => !current)}>
-          <Plus aria-hidden="true" />
-          Register source
-        </Button>
+        {canManageSources ? (
+          <Button type="button" onClick={() => setShowForm((current) => !current)}>
+            <Plus aria-hidden="true" />
+            Register source
+          </Button>
+        ) : null}
       </header>
 
-      {showForm ? (
+      {canManageSources && showForm ? (
         <form onSubmit={register} className="grid gap-4 border-b bg-muted/25 py-6 sm:grid-cols-2 lg:grid-cols-[160px_1fr_1.25fr_180px_auto] lg:items-end">
           <div>
             <label htmlFor="source-kind" className="mb-1.5 block text-sm font-medium">Type</label>
@@ -1069,13 +1097,13 @@ function SourcesView({ workspace, onRefresh }: { workspace: Workspace; onRefresh
                 <Badge variant="outline" className="gap-1.5 font-normal">
                   <Check aria-hidden="true" /> Read only
                 </Badge>
-              ) : (
+              ) : canManageSources ? (
                 <Button type="button" variant="ghost" size="sm" onClick={() => void toggle(source)}>
                   {source.enabled ? "Disable" : "Enable"}
                   <ChevronRight aria-hidden="true" />
                 </Button>
-              )}
-              {!workspace.permissions || workspace.permissions.includes("sources.manage") ? (
+              ) : null}
+              {canManageSources ? (
                 <RemoveSourceButton source={source} organization={workspace.organization.slug} onRemoved={onRefresh} />
               ) : null}
             </div>
@@ -1264,6 +1292,9 @@ export function SpurWorkspace({
   initialModelEntityId = "",
   initialCatalogQuery = "",
   initialCatalogKind = "all",
+  initialProductDocumentId = "",
+  initialProductDocumentType = "all",
+  initialProductDocumentQuery = "",
   initialConversationId = "",
   initialIsmsSelection = "",
   initialWikiPageId = "",
@@ -1276,6 +1307,9 @@ export function SpurWorkspace({
   initialModelEntityId?: string;
   initialCatalogQuery?: string;
   initialCatalogKind?: string;
+  initialProductDocumentId?: string;
+  initialProductDocumentType?: string;
+  initialProductDocumentQuery?: string;
   initialConversationId?: string;
   initialIsmsSelection?: string;
   initialWikiPageId?: string;
@@ -1296,6 +1330,8 @@ export function SpurWorkspace({
         : subSegment === "gaps"
           ? "gaps"
           : "model"
+    : segment === "documents"
+      ? subSegment ? "document" : "documents"
     : segment === "sources" || segment === "guide" || segment === "isms" || segment === "wiki" || segment === "admin"
       ? segment
       : "ask";
@@ -1312,6 +1348,8 @@ export function SpurWorkspace({
   const basePath = `/o/${organizationSlug}`;
   const organizationSwitchPath = view === "catalog" || view === "entity"
     ? "model/catalog"
+    : view === "documents" || view === "document"
+      ? "documents"
     : view === "health" || view === "gaps"
       ? `model/${view}`
       : view === "isms"
@@ -1440,6 +1478,13 @@ export function SpurWorkspace({
     return () => query.removeEventListener("change", syncSystemTheme);
   }, [themePreference]);
 
+  useEffect(() => {
+    if (!workspace || view !== "entity" || !initialModelEntityId) return;
+    const item = workspace.memory.find((candidate) => candidate.id === initialModelEntityId);
+    if (!item || !isProductDocument(item)) return;
+    startNavigation(() => router.replace(productDocumentPath(organizationSlug, item.id)));
+  }, [initialModelEntityId, organizationSlug, router, startNavigation, view, workspace]);
+
   if (authRequired) {
     const organization = organizations.find((item) => item.slug === organizationSlug);
     return (
@@ -1479,6 +1524,15 @@ export function SpurWorkspace({
     return <WorkspaceLoading />;
   }
 
+  const productDocumentIds = new Set(
+    workspace.memory.filter(isProductDocument).map((item) => item.id),
+  );
+  const modelWorkspace: WorkspaceView = {
+    ...workspace,
+    memory: workspace.memory.filter((item) => !productDocumentIds.has(item.id)),
+    relationships: workspace.relationships.filter((relationship) =>
+      !productDocumentIds.has(relationship.from_id) && !productDocumentIds.has(relationship.to_id)),
+  };
   const provider = workspace.provider === "anthropic" ? "Claude" : workspace.provider === "openai" ? "OpenAI" : "MCP only";
 
   if (view === "wiki") {
@@ -1565,17 +1619,27 @@ export function SpurWorkspace({
         ) : null}
         {view === "model" ? (
           <ModelOverview
-            workspace={workspace}
+            workspace={modelWorkspace}
             initialSelected={initialModelSelection}
             initialRelationship={initialModelRelationship}
             initialMap={initialModelMap}
             initialFocus={initialModelFocus}
           />
         ) : null}
-        {view === "catalog" ? <ModelCatalog workspace={workspace} initialQuery={initialCatalogQuery} initialKind={initialCatalogKind} onRefresh={loadWorkspace} /> : null}
-        {view === "entity" ? <ModelEntityDetail key={initialModelEntityId} workspace={workspace} entityId={initialModelEntityId} onRefresh={loadWorkspace} /> : null}
-        {view === "health" ? <ModelHealth workspace={workspace} /> : null}
+        {view === "catalog" ? <ModelCatalog workspace={modelWorkspace} initialQuery={initialCatalogQuery} initialKind={initialCatalogKind} onRefresh={loadWorkspace} /> : null}
+        {view === "entity" ? <ModelEntityDetail key={initialModelEntityId} workspace={modelWorkspace} entityId={initialModelEntityId} onRefresh={loadWorkspace} /> : null}
+        {view === "health" ? <ModelHealth workspace={modelWorkspace} /> : null}
         {view === "gaps" ? <KnowledgeGapsView workspace={workspace} /> : null}
+        {view === "documents" || view === "document" ? (
+          <ProductDocuments
+            key={initialProductDocumentId || `${initialProductDocumentType}:${initialProductDocumentQuery}`}
+            workspace={workspace}
+            initialDocumentId={initialProductDocumentId}
+            initialType={initialProductDocumentType}
+            initialQuery={initialProductDocumentQuery}
+            onRefresh={loadWorkspace}
+          />
+        ) : null}
         {view === "isms" ? <IsmsCatalog workspace={workspace} initialSelected={initialIsmsSelection} /> : null}
         {view === "sources" ? <SourcesView workspace={workspace} onRefresh={loadWorkspace} /> : null}
         {view === "admin" ? <AdminAccess organizationId={workspace.organization.slug} /> : null}

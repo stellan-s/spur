@@ -1327,51 +1327,117 @@ export class AccessStore {
     );
   }
 
-  async listOAuthTokens(organizationId: string): Promise<Array<{
+  async listOAuthGrants(organizationId: string): Promise<Array<{
     id: string;
     userId: string;
+    userEmail: string;
+    userDisplayName: string;
     clientId: string;
-    createdAt: string;
-    expiresAt: string;
+    clientName: string;
+    authorizedAt: string;
+    lastRenewedAt: string;
+    refreshExpiresAt: string;
+    status: "active" | "expired" | "revoked";
     revokedAt: string | null;
   }>> {
     const rows = await this.query<{
-      id: string;
+      root_id: string;
       user_id: string;
+      email: string;
+      display_name: string;
       client_id: string;
-      created_at: Date;
-      expires_at: Date;
+      client_name: string;
+      authorized_at: Date;
+      last_renewed_at: Date;
+      refresh_expires_at: Date;
+      status: "active" | "expired" | "revoked";
       revoked_at: Date | null;
     }>(
-      `SELECT id, user_id, client_id, created_at, expires_at, revoked_at
-       FROM oauth_tokens WHERE organization_id = $1 ORDER BY created_at DESC`,
+      `WITH RECURSIVE roots AS (
+         SELECT token.id
+         FROM oauth_tokens token
+         WHERE token.organization_id = $1
+           AND NOT EXISTS (
+             SELECT 1 FROM oauth_tokens predecessor
+             WHERE predecessor.organization_id = token.organization_id
+               AND predecessor.replaced_by = token.id
+           )
+       ), token_chains AS (
+         SELECT root.id AS root_id, token.id, token.replaced_by, token.user_id,
+           token.client_id, token.created_at, token.refresh_expires_at, token.revoked_at
+         FROM roots root
+         JOIN oauth_tokens token ON token.id = root.id
+         UNION ALL
+         SELECT chain.root_id, successor.id, successor.replaced_by, successor.user_id,
+           successor.client_id, successor.created_at, successor.refresh_expires_at,
+           successor.revoked_at
+         FROM token_chains chain
+         JOIN oauth_tokens successor ON successor.id = chain.replaced_by
+       ), latest AS (
+         SELECT DISTINCT ON (root_id) root_id, user_id, client_id, created_at,
+           refresh_expires_at, revoked_at
+         FROM token_chains
+         ORDER BY root_id, created_at DESC
+       )
+       SELECT latest.root_id, latest.user_id, users.email, users.display_name,
+         latest.client_id, clients.client_name, root.created_at AS authorized_at,
+         latest.created_at AS last_renewed_at, latest.refresh_expires_at,
+         CASE
+           WHEN latest.revoked_at IS NOT NULL THEN 'revoked'
+           WHEN latest.refresh_expires_at <= NOW() THEN 'expired'
+           ELSE 'active'
+         END AS status,
+         latest.revoked_at
+       FROM latest
+       JOIN oauth_tokens root ON root.id = latest.root_id
+       JOIN oauth_clients clients ON clients.client_id = latest.client_id
+       JOIN users ON users.id = latest.user_id
+       ORDER BY root.created_at DESC`,
       [organizationId],
     );
     return rows.map((row) => ({
-      id: row.id,
+      id: row.root_id,
       userId: row.user_id,
+      userEmail: row.email,
+      userDisplayName: row.display_name,
       clientId: row.client_id,
-      createdAt: timestamp(row.created_at),
-      expiresAt: timestamp(row.expires_at),
+      clientName: row.client_name,
+      authorizedAt: timestamp(row.authorized_at),
+      lastRenewedAt: timestamp(row.last_renewed_at),
+      refreshExpiresAt: timestamp(row.refresh_expires_at),
+      status: row.status,
       revokedAt: optionalTimestamp(row.revoked_at),
     }));
   }
 
-  async revokeOAuthTokenById(organizationId: string, tokenId: string, actorUserId: string): Promise<void> {
+  async revokeOAuthGrantById(organizationId: string, grantId: string, actorUserId: string): Promise<void> {
     await this.transaction(async (client) => {
       const result = await this.query(
-        `UPDATE oauth_tokens SET revoked_at = NOW()
-         WHERE organization_id = $1 AND id = $2 AND revoked_at IS NULL RETURNING id`,
-        [organizationId, tokenId],
+        `WITH RECURSIVE grant_tokens AS (
+           SELECT id, replaced_by
+           FROM oauth_tokens
+           WHERE organization_id = $1 AND id = $2
+           UNION ALL
+           SELECT successor.id, successor.replaced_by
+           FROM oauth_tokens successor
+           JOIN grant_tokens token ON successor.id = token.replaced_by
+           WHERE successor.organization_id = $1
+         )
+         UPDATE oauth_tokens SET revoked_at = NOW()
+         WHERE organization_id = $1
+           AND id IN (SELECT id FROM grant_tokens)
+           AND revoked_at IS NULL
+         RETURNING id`,
+        [organizationId, grantId],
         client,
       );
-      if (result.length === 0) throw new NotFoundError("MCP token was not found.");
+      if (result.length === 0) throw new NotFoundError("The MCP connection was not found or is already revoked.");
       await this.recordAudit({
         organizationId,
         actorUserId,
-        action: "mcp_token.revoked",
-        targetType: "mcp_token",
-        targetId: tokenId,
+        action: "mcp_grant.revoked",
+        targetType: "mcp_grant",
+        targetId: grantId,
       }, client);
     });
   }

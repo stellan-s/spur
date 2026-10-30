@@ -58,4 +58,4 @@ Show the draft and ask for approval before saving.
 - Preserve editable Mermaid source inline when the destination supports it. Use stable HTTPS image references for documents saved in Spur; local file paths are not portable to another MCP client.
 - If the tool rejects the document for length, shorten repetition and low-value prose before dropping requirements or acceptance conditions.
 
-Report what was saved, which sections were included, and which questions remain open. Do not claim the requirements are approved unless the user explicitly approved them as such.
+Report what was saved, include the Product documents path returned by Spur, list which sections were included, and state which questions remain open. Do not claim the requirements are approved unless the user explicitly approved them as such.

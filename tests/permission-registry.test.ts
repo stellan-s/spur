@@ -120,7 +120,14 @@ describe("permission registries", () => {
   it("declares the global guide separately from organisation pages", () => {
     expect(pageAccess("/guide")).toBe("public");
     expect(pageAccess("/o/example/ask")).toBe("memory.ask");
+    expect(pageAccess("/o/example/documents")).toBe("memory.read");
+    expect(pageAccess("/o/example/documents/mem_prd")).toBe("memory.read");
+    expect(pageAccess("/o/example/sources")).toBe("memory.read");
     expect(pageAccess("/o/example/wiki/mem_example")).toBe("wiki.read");
     expect(pageAccess("/o/example/admin")).toBe("users.manage");
+  });
+
+  it("requires an authenticated editor for product-document updates", () => {
+    expect(routeAccess("PATCH", "/api/product-documents/mem_prd")).toBe("authenticated");
   });
 });
